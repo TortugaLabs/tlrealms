@@ -1,0 +1,5 @@
+adm 755
+chpwd 755
+hostkey 755
+khfm 755
+shadm 755

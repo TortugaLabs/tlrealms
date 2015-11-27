@@ -1,0 +1,43 @@
+#!/usr/bin/perl -w
+#
+use strict;
+use warnings;
+use FindBin;
+use lib "$FindBin::Bin";
+use TLR::fsutil;
+
+my $dsrv;
+my $verbose = 1;
+
+my $cfgfile = $ENV{TLRCFG} ? $ENV{TLRCFG} : '/etc/tlr.cfg';
+if (my $cfg = read_cfg($cfgfile,'ed')) {
+    eval $cfg;
+    die "$@\n" if ($@);
+}
+
+while (scalar(@ARGV)) {
+    if ($ARGV[0] eq '-s' || $ARGV[0] eq '--server') {
+	$dsrv = $ARGV[1];
+	shift ; shift ;
+    } elsif ($ARGV[0] =~ s/^-s//) {
+	$dsrv = $ARGV[0];
+	shift;
+    } elsif ($ARGV[0] =~ s/^--server=//) {
+	$dsrv = $ARGV[0];
+	shift;
+	die "missing argument for $ARGV[0] option\n";
+    } elsif ($ARGV[0] eq '-v' || $ARGV[0] eq '--verbose') {
+	shift;
+	$verbose = 1;
+    } elsif ($ARGV[0] eq '-q' || $ARGV[0] eq '--quiet') {
+	shift;
+	$verbose = 0;
+    } else {
+	last;
+    }
+}
+
+die "No domain server specified" unless ($dsrv);
+
+exec(qw(ssh -l root),$dsrv,qw(adm),@ARGV);
+die "exec(ssh): $!\n";

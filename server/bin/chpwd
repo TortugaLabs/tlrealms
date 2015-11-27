@@ -1,0 +1,93 @@
+#!/bin/sh
+#
+# Change password script
+#
+lib=/usr/localpkgs/tlr/lib
+export PATH=$PATH:/sbin:/usr/sbin
+
+. $lib/config.sh
+. $lib/error.sh
+. $lib/logmsg.sh
+
+invalid_creds() {
+    logmsg "chpwd auth failed for $*"
+    fatal "Invalid username or password"
+}
+
+if [ x"$1" = x"-f" ] ; then
+  # Modify alternate pwdfile
+  pwdfile="$2" ; shift 2 || fatal "Invalid parameters for -f option"
+  [ -f "$pwdfile" ] || fatal "$pwdfile: not found"
+  htrealm=""
+  kadmin=""
+  shadow=""
+fi
+
+if [ $# -eq 0 ] ; then
+  echo -n "Username:     " 1>&2
+  read user
+  echo -n "Old password: " 1>&2
+  salt="$(awk -F: '$1 == "'"$user"'" { print $2 }' $pwdfile)"
+
+  # opwd="$($crypt "$salt" -)"
+  # XXX: We need to do this rather than the previous becasue apperenty
+  # the spawned cmd eats too much input which causes the next read to get
+  # empty text...
+  read opwd
+  opwd="$(echo "$opwd" | $crypt "$salt" -)"
+  # echo "PWFILE=$pwdfile USER=$user SALT=$salt OPWD=$opwd" | cat -v 1>&2
+
+  [ -z "$salt" ] && invalid_creds $user
+  [ x"$salt" != x"$opwd" ] && invalid_creds $user
+else
+  user="$1"
+fi
+
+echo -n "New password: " 1>&2
+read npwd
+
+# Change the passwords
+
+ch_file() {
+  local file="$1" func="$2"
+  shift 2
+  local s="$(sed 's/^/|/' "$file")"
+  local d="$(echo "$s" | $func "$@")"
+  [ x"$s" = x"$d" ] && return
+  cp $file $file~
+  echo "$d" | sed 's/^|//' | grep -v '^$' > $file
+}
+
+pwgen() {
+  local \
+    clrtxt="$1" \
+    salt="\$1\$$(expr substr "$(dd if=/dev/urandom bs=1 count=16 2>/dev/null | $crypt '$1$aaaaaaaa$')" 13 8)\$"
+  echo "$clrtxt" | $crypt "$salt"
+}
+
+ch_pwdfile() {
+  awk -F: '$1 != "|'"$1"'" { print }'
+  echo "|$1:$(pwgen "$2")"
+}
+ch_htdigest() {
+  awk -F: '$1 != "|'"$1"'" { print }'
+  local dd="$(echo -n "$1:$3:$2" | md5sum | awk '{print $1}')"
+  echo "|$1:$3:$dd"
+}
+ch_shadow() {
+  local now=$(expr $(date +%s) / 86400)
+  awk -F: -v OFS=: '
+	$1 != "|'"$1"'" { print }
+	$1 == "|'"$1"'" { $3 = '$now'; print }'
+}
+
+[ -n "$pwdfile" ] && ch_file $pwdfile ch_pwdfile "$user" "$npwd"
+[ -n "$htrealm" ] && ch_file $htdigest ch_htdigest "$user" "$npwd" "$htrealm"
+[ -n "$shadow" ] && ch_file $shadow ch_shadow "$user"
+
+if [ -n "$kadmin" ] ; then
+  if [ -f /etc/krb5kdc/principal ] ; then
+    yes "$npwd" | kadmin.local -q "cpw $user" 1>&2
+  fi
+fi
+exit 0

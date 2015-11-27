@@ -1,0 +1,109 @@
+#!/bin/sh
+#
+# Manage known hosts keys files...
+#
+export PATH=$PATH:/sbin:/usr/sbin
+KH_FILE="$HOME/.ssh/known_hosts"
+
+fatal() {
+  echo "$@" 1>&2
+  exit 1
+}
+
+if [ x"$1" = x"-f" ] ; then
+  KH_FILE="$2"
+  shift 2 || fatal "No KH file specified"
+  [ -z "$KH_FILE" ] && fatal "Empty KH file name"
+fi
+[ -f "$KH_FILE" ] || fatal "$KH_FILE: not found"
+
+######################################################################
+
+
+khfm_add() {
+  [ -z "$1" ] && fatal "Must specify key to add"
+  local newkey="$1" ; shift
+
+  if [ $# -gt 0 ] ; then
+    [ -z "$1" ] && fatal "Missing key type"
+    [ -z "$2"  ] && fatal "Missing key data"
+    [ -z "$(echo $1 | tr -d 0-9)" ] && fatal "Invalid key type: $1"
+    echo $newkey $* >> $KH_FILE
+  else
+    local ktype kdat
+    while read ktype kdat
+    do
+      [ -z "$ktype" ] && continue
+      [ -z "$kdat"  ] && continue
+      if [ -z "$(echo $ktype | tr -d 0-9)" ] ; then
+	echo "Ignoring: $ktype $kdat" 1>&2
+	continue
+      fi
+      echo $newkey $ktype $kdat >> $KH_FILE
+    done
+  fi
+}
+
+khfm_ls() {
+  if [ x"$1" = x"-l" ] ; then
+    awk '{print $1,$2}' <$KH_FILE | sort -u
+  else
+    awk '{print $1}' <$KH_FILE | sort -u
+  fi
+}
+
+khfm_find() {
+  [ -z "$1" ] && fatal "Must specified key to find"
+  if [ -z "$2" ] ; then
+    awk '$1 == "'"$1"'" { print }' < $KH_FILE
+  else
+    awk '$1 == "'"$1"'" && $2 == "'"$2"'" { print }' < $KH_FILE
+  fi
+}
+
+khfm_rm() {
+  local s="$(sed s/^/:/ <$KH_FILE)"
+  [ -z "$1" ] && fatal "Must specified key to remove"
+  if [ -z "$2" ] ; then
+    local d="$(echo "$s" | awk '$1 != ":'"$1"'" { print }')"
+  else
+    local d="$(echo "$s" | awk '$1 != ":'"$1"'" || $2 != "'"$2"'" { print }')"
+  fi
+  if [ x"$s" != x"$d" ] ; then
+    cp $KH_FILE $KH_FILE~
+    echo "$d" | sed 's/^://' | grep -v '^$' > $KH_FILE
+  fi
+}
+
+
+######################################################################
+op="$1"
+shift || fatal "No sub-command specified"
+
+case "$op" in
+  add)
+    khfm_add "$@"
+    ;;
+  ls)
+    khfm_ls "$@"
+    ;;
+  find)
+    khfm_find "$@"
+    ;;
+  rm)
+    khfm_rm "$@"
+    ;;
+  -h|help|hlp)
+    cat <<-EOF
+	Usage:
+	- $0 add _hostname_ [keyline]
+	    Add hostname keys.  If keyline not specitied reads from stdin.
+	- $0 ls [-l]
+	- $0 find _host_ [type]
+	- $0 rm _host_ [type]
+	EOF
+    ;;
+  *)
+    fatal "$op: Unknown sub command"
+    ;;
+esac

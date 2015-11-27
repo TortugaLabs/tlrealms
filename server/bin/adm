@@ -1,0 +1,172 @@
+#!/bin/sh
+#
+# Operator shell
+#
+lib=/usr/localpkgs/tlr/lib
+export PATH=$PATH:/sbin:/usr/sbin
+
+. $lib/config.sh
+. $lib/error.sh
+. $lib/flock.sh
+. $lib/logmsg.sh
+. $lib/sysupd.sh
+. $lib/sync.sh
+
+if [ -n "$SSH_CONNECTION" ] ; then
+  remhost=$(echo $SSH_CONNECTION | ( read a b ; echo $a))
+else
+  remhost="*local*"
+fi
+
+do_mod() {
+    sync_send $dbdir
+    echo 'DONE'
+    if sync_recv $dbdir ; then
+      logmsg db update
+      sysupd $dbdir $etcdir
+    fi
+}
+
+kadm() {
+    kadmin.local -q "$*" | sed 's/^/:/'
+    echo 'EOF'
+}
+
+do_kadm() {
+  [ -z "$*" ] && return
+  op="$1" ; shift
+
+  case "$op" in
+    ls)
+      kadm listprincs
+      ;;
+    adduser)
+      yes $(date +%s) | kadm ank "$1" | sed 's/^/:/'
+      ;;
+    deluser)
+      yes yes | kadm delprinc "$1" | sed 's/^/:/'
+      ;;
+    *)
+      fatal "$op: Invalid request"
+      ;;
+  esac
+}
+
+
+do_dispatch() {
+  [ -z "$*" ] && return
+  op="$1" ; shift
+  case "$op" in
+    send)
+      sync_send $dbdir
+      echo 'DONE'
+      ;;
+    lock)
+      if [ x"$1" = x"-s" -o x"$1" = x"-x" ] ; then
+	flock "$1" 200 || fatal "Unable to obtain lock"
+      else
+	fatal "invalid lock command"
+      fi
+      ;;
+    setpwd)
+      if [ "$#" -ne 1 ] ; then
+	echo "FAIL"
+      else 
+	if chpwd "$1" ; then
+	  logmsg setpwd change "$1"
+	  do_sysupd=true
+	  echo OK
+	else
+	  echo FAIL
+	fi
+      fi
+      ;;
+    kadm)
+      do_kadm "$@"
+      ;;
+    recv)
+      local mft
+      if sync_recv $dbdir; then
+	logmsg changed dbfiles
+	do_sysupd=true
+      fi
+      ;;
+  esac
+}
+
+
+do_setpwd() {
+  [ -z "$1" ] && fatal "No user specified"
+  if chpwd "$@" ; then
+    logmsg password change: $*
+    sysupd $dbdir $etcdir
+  fi
+}
+
+do_hkfm() {
+  local datfile="$1" ; shift
+  local orig="$(sed s/^:// < $datfile)"
+  khfm -f "$datfile" "$@"
+  local dest="$(sed s/^:// < $datfile)"
+
+  if [ x"$orig" != x"$dest" ] ; then
+    logmsg $datfile updated
+    sysupd $dbdir $etcdir
+  fi
+}
+######################################################################
+
+op="$1"
+[ -z "$op" ] && fatal "No adm command specified"
+shift
+
+case "$op" in
+  shell)
+    (
+     do_sysupd=false
+      while read cmdline
+      do
+	do_dispatch $cmdline
+      done
+      if $do_sysupd ; then
+	 logmsg db update
+	 sysupd $dbdir $etcdir
+      fi
+    ) 200>$lockfile
+    ;;
+  host)
+    with_lock -x do_hkfm $dbdir/known_hosts "$@"
+    ;;
+  admins)
+    with_lock -x do_hkfm $dbdir/admin_keys "$@"
+    ;;
+  setpwd)
+    with_lock -x do_setpwd "$@"
+    ;;
+  admpw)
+    with_lock -x do_setpwd -f $dbdir/op.pwds "$@"
+    ;;
+  sysgen)
+    with_lock -x sysupd $dbdir $etcdir
+    ;;
+  krb)
+     do_kadm "$@"
+     ;;
+  -h|help|hlp)
+     cat <<-EOF
+	Usage:
+	    $0 shell - Enter shell mode
+	    $0 host - manage host keys (See khfm -h)
+	    $0 admins - manage admin keys (See khfm -h)
+	    $0 setpwd [user] - set user passwords
+	    $0 admpw - Change admin/sudo password
+	    $0 krb [ops] - Kerberos command
+	 	- ls - list principals
+	 	- adduser [username] - Add user
+	 	- deluser [username] - del user
+	EOF
+     ;;
+  *)
+     fatal "$op: Unknown adm command"
+     ;;
+esac

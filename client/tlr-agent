@@ -1,0 +1,380 @@
+#!/usr/bin/perl -w
+#
+# Simple TLR agent daemon
+#
+#++
+# = TLR-AGENT(8)
+# :man manual: TL Realms
+# :Revision: 1.0
+# :Author: A Liu Ly
+#
+# == NAME
+#
+# tlr-agent - TLR agent
+#
+# == SYNOPSIS
+#
+# *tlr-agent* _[options]_
+#
+# == DESCRIPTION
+#
+# *tlr-agent* is a background daemon that manages interaction between
+# a client system and the TLR server.
+#
+# Manages the file synchronisation and the remote server access.
+#
+# The agent can be configured through command line arguments or
+# through a configuration file.
+#
+# The *tlr-agent* runs in the background responded to RPC requests.
+# Every so often it would become active and contact the *TLR* *server*
+# and synchronise data with it.
+#
+# If data is modified, a _postproc_ script is run that would potentially
+# apply any necessary changes to the running system.
+#
+# == OPTIONS
+#
+# These options are recongised.  Also are present in the config
+# file (value in parenthesis):
+#
+# *--server|-s* _server_ +($dsrv)+::
+#      Specifies the TLR server name.
+# *--post* _command_ +($postproc)+::
+#      Command to run after an update has been received.
+# *-d* _directory_ +($dbdir)+::
+#      Location of the data directory.
+# *-k* _keyfile_ +($keyfile)+::
+#      Host key used to specified the agent. Configured automatically.
+# *-e* _etcdir_ +($etcdir)+::
+#      Location of `/etc` directory.  Defaults to `/etc`.
+# *-m* _seconds_ +($min_sleep)+::
+#      Minimum sleep time between updates.  Defaults to `3600` seconds.
+# *-M* _seconds_ +($max_sleep)+::
+#      Max sleep time between updates.  Defaults to `4800` seconds.
+# *-p* _port_ +($port)+::
+#      TCP port that the agent listens to.  Defaults to `9989`.
+# *-u* _uid_ +($t_uid)+::
+#      This is the _uid_ that database files will be saved as.
+# *-g* _gid_ +($t_gid)+::
+#      This is the _gid_ that database files will be saved as.
+# *-v* +($verbose)+::
+#      Enable verbose diagnostics.
+#
+# == FILES
+#
+# These files are used:
+#
+# /etc/tlr.cfg::
+#      This is the default configuration file.  Can be overridend by
+#      `TLRCFG` environment variable.
+#
+# == ENVIRONMENT
+#
+# The following environment variables are recognised:
+#
+# TLRCFG::
+#      Location of the config file.
+# NOTIFY_SOCKET::
+#      Used to determine if we are running under systemd(1)
+#
+#--
+
+
+use strict;
+use warnings;
+use POSIX ":sys_wait_h";
+use Errno;
+use FindBin;
+use lib "$FindBin::Bin";
+use TLR::socket;
+use TLR::sshcmd;
+use TLR::proto;
+use TLR::fsutil;
+
+my $verbose = 1;
+my $dsrv;
+
+my $dbdir;
+my $etcdir = '/etc';
+my $keyfile;
+my $t_uid = $<;
+my $t_gid = $(;
+my $min_sleep = 3600;
+my $max_sleep = 4800;
+my $port = 9989;
+my $postproc;
+
+my $cfgfile = $ENV{TLRCFG} ? $ENV{TLRCFG} : '/etc/tlr.cfg';
+if (my $cfg = read_cfg($cfgfile,'agent')) {
+    eval $cfg;
+    die "$@\n" if ($@);
+}
+delete $ENV{SSH_AUTH_SOCK};
+
+while (scalar (@ARGV)) {
+    if ($ARGV[0] eq '-s' || $ARGV[0] eq '--server') {
+	$dsrv = $ARGV[1];
+	shift ; shift ;
+    } elsif ($ARGV[0] =~ s/^-s//) {
+	$dsrv = $ARGV[0];
+	shift;
+    } elsif ($ARGV[0] =~ s/^--server=//) {
+	$dsrv = $ARGV[0];
+	shift;
+    } elsif ($ARGV[0] eq '--post') {
+	shift;
+	$postproc = shift;
+    } elsif ($ARGV[0] eq '-d') {
+	shift;
+	$dbdir = shift;
+    } elsif ($ARGV[0] eq '-k') {
+	shift;
+	$keyfile = shift;
+    } elsif ($ARGV[0] eq '-e') {
+	shift;
+	$etcdir = shift;
+    } elsif ($ARGV[0] eq '-m') {
+	shift;
+	$min_sleep = shift;
+    } elsif ($ARGV[0] eq '-p') {
+	shift;
+	$port = shift;
+    } elsif ($ARGV[0] eq '-M') {
+	shift;
+	$max_sleep = shift;
+    } elsif ($ARGV[0] eq '-u') {
+	shift;
+	$t_uid = shift;
+    } elsif ($ARGV[0] eq '-g') {
+	shift;
+	$t_gid = shift;
+    } elsif ($ARGV[0] eq '-q') {
+	$verbose = 0;
+	shift;
+    } elsif ($ARGV[0] eq '-v') {
+	$verbose = 1;
+	shift;
+    } else {
+	last;
+    }
+}
+
+die "No domain server specified\n" unless ($dsrv);
+die "No dat dir specified\n" unless ($dbdir);
+unless ($keyfile) {
+    if (-f $etcdir.'/ssh/ssh_host_dsa_key') {
+	$keyfile = $etcdir.'/ssh/ssh_host_dsa_key';
+    } elsif (-f $etcdir . '/ssh/ssh_host_rsa_key') {
+	$keyfile = $etcdir.'/ssh/ssh_host_rsa_key';
+    } else {
+	die "No keyfile specified\n";
+    }
+}
+die "invalid port\n" unless $port =~ /^ \d+ $/x;
+die "invalid min sleep value\n" unless $min_sleep =~ /^ \d+ $/x;
+die "invalid max sleep value\n"  unless $max_sleep =~ /^ \d+ $/x;
+die "max_sleep <= min_sleep\n" if ($max_sleep <= $min_sleep);
+
+$dbdir =~ s/\/+$//;
+$dbdir .= '/';
+$etcdir =~ s/\/+$//;
+$etcdir .= '/';
+
+
+####
+# Parse command line options
+####
+
+
+my $srv = newsrv_sock($port);
+mux_register($srv,sub { newclient($srv) });
+
+sub REAPER {
+    local $!;   # don't let waitpid() overwrite current error
+    while ((my $pid = waitpid(-1, WNOHANG)) > 0 && WIFEXITED($?)) {
+	print STDERR "reaped $pid ". ($? ? " with exit $?" : "");
+    }
+    $SIG{CHLD} = \&REAPER;  # loathe SysV
+}
+$SIG{CHLD} = \&REAPER;
+
+
+my $next_sync = 0;
+if (-f $dbdir.'serial.txt') {
+    $next_sync = time() + int(rand($max_sleep-$min_sleep));
+}
+my $sync_data_pid;
+
+if ($ENV{NOTIFY_SOCKET}) {
+    # OK, we are running under systemd.
+    print STDERR "NOTIFYSOCKET: $ENV{NOTIFY_SOCKET}\n";
+    system(qw(systemd-notify --ready --status=TLR-AGENT_READY));
+}
+
+
+while (1) {
+    mux_poll($sync_data_pid ? undef : $next_sync - time());
+    if (!$sync_data_pid && time() > $next_sync) {
+	sync_start();
+    }
+}
+
+sub newclient {
+    my ($s) = @_;
+
+    my ($c,$name,$addr) = accept_client($s);
+    unless ($c) {
+	warn("accept: $!\n",);
+	return;
+    }
+    print STDERR "Connected $name [$addr]\n" if ($verbose);
+    my $buf = {
+	'buf'=>'',
+	'peer'=>[$name,$addr],
+    };
+    mux_register($c,sub { wait_cmd($c,$buf) });
+}
+
+sub wait_cmd {
+    my ($sock,$dat) = @_;
+    my $peer = $dat->{peer}->[0].':'.$dat->{peer}->[1];
+    # print STDERR "READING from $peer ",length($dat->{buf}),"\n";
+    if (sysread($sock,$dat->{buf},4096,length($dat->{buf}))>0) {
+	if ($dat->{buf} =~ /^resync\s+/) {
+	    if ($sync_data_pid) {
+		print STDERR "$peer: sync requested while already running\n";
+		syswrite($sock,"BUSY\n");
+	    } else {
+		print STDERR "$peer: sync requested\n";
+		syswrite($sock,"QUEUED\n");
+		$next_sync = 0;
+	    }
+	    mux_delete($sock);
+	} elsif ($dat->{buf} =~ /^chpwd\s+/) {
+	    my @args = split(/\r*\n/,$dat->{buf},-1);
+	    return if (scalar(@args) < 5); # Incomplet request.. keep waiting
+	    # CHANGE PASSWORD
+	    chpwd_start($sock,@args);
+	} else {
+	    print STDERR $peer;
+	    print STDERR ": Unknown request ",(split(/\n/,$dat->{buf}))[0];
+	    print STDERR "\n";
+	    mux_delete($sock);
+	}
+	return;
+    }
+    print STDERR "$peer: protocol error\n";
+    mux_delete($sock);
+}
+
+
+sub sync_start {
+    # Starting a sync task...
+    print STDERR "Spawning sync task\n";
+    my ($pid,$fh) = spawn sub {
+	my ($fh) = @_;
+
+	my $serial;
+	if (open(my $fh,'<',$dbdir.'serial.txt')) {
+	    $serial = <$fh>;
+	    $serial =~ s/\s+$//;
+	    $serial =~ s/^\s+//;
+	    close($fh);
+	} else {
+	    $serial = 0;
+	}
+
+	# Retrieve remote files
+	my ($pid,$rh,$wh) = sshcmd($dsrv,$keyfile,'sync',$serial);
+	my $dat = tlr_recv($rh);
+	close($rh); close($wh);
+
+	# write file updates
+	my $count = 0;
+	while (my ($f,$d) = each %$dat) {
+	    my $r = file_update($dbdir.$f,$d->[TXT],$d->[MODE],$t_uid,$t_gid);
+	    if (!$r) {
+		warn "$f: $!\n";
+	    } else {
+		++$count;
+		if ($r > 0) {
+		    print STDERR "$f $r\n" if ($verbose);
+		}
+	    }
+	}
+
+	if ($count) {
+	    # generate system files
+	    if ($postproc) {
+		system($postproc);
+	    }
+	}
+	print $fh $count;
+    };
+
+    if ($pid) {
+	print STDERR "SPAWNED: ",$pid,"\n";
+	$sync_data_pid = $pid;
+	mux_register($fh,sub { sync_wait($fh) });
+    } else {
+	die "spawn: $!\n";
+    }
+}
+
+sub sync_wait {
+    my ($fh) = @_;
+
+    # OK, completed a sync...
+
+    mux_delete($fh);
+    $sync_data_pid = undef;
+    $next_sync = int(time() + rand($max_sleep-$min_sleep) + $min_sleep);
+
+    print STDERR "Sync finshed  .. next in ",$next_sync - time(),"seconds\n";
+
+}
+
+sub chpwd_start {
+    my ($cln,$chpw_cmd,$user,$opwd,$npwd) = @_;
+
+    # print STDERR "user='$user'\nopwd='$opwd'\nnpwd='$npwd'\n";
+
+    my ($pid,$fh) = spawn sub {
+	my ($fh) = @_;
+	my ($pid,$rh,$wh) = sshcmd($dsrv,$keyfile,'chpwd');
+	print $wh join("\n",$user,$opwd,'');
+	print $wh $npwd,"\n";
+	close($wh);
+	my $ret = '';
+	while (<$rh>) {
+	    $ret .= $_;
+	}
+	print $fh $ret;
+    };
+    if ($pid) {
+	# Ignore further input from client
+	mux_register($cln, sub { my $x; sysread($cln, $x, 4096);});
+	mux_register($fh, sub { chpwd_wait($fh,$cln,$user); });
+    }
+}
+
+sub chpwd_wait {
+    my ($cin,$clnt) = @_;
+    my $buf = '';
+    my $result = 'FAIL';
+    if (sysread($cin,$buf,4096) > 0) {
+	$buf =~ s/\s+$//;
+	$buf =~ s/^\s+//;
+	# print STDERR "\n\nBUF=<$buf>\n\n";
+	if ($buf eq 'OK') {
+	    # Succesful...
+	    $result = 'OK';
+	    $next_sync = 0; # Schedule a new resync...  unless already running
+	}
+    }
+    syswrite($clnt,$result."\n");
+    mux_delete($cin);
+    mux_delete($clnt);
+}
+
