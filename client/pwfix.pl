@@ -30,8 +30,6 @@ while (scalar (@ARGV)) {
 	last;
     }
 }
-
-
 sub resolve_grp {
     my ($grp,$grtab) = @_;
     unless ($grtab->{$grp}) {
@@ -74,7 +72,6 @@ sub read_pacmandb {
     return 1;
 }
 
-
 my $op = shift;
 $op || die "No op specified\n";
 
@@ -100,7 +97,6 @@ if ($op eq 'group') {
     #	- create the users group...
     read_file($passwd_file,\%dbpasswd) || die "$passwd_file: $!\n";
     read_file($group_in,\%dbgroup) || die "$group_in: $!\n";
-    
     # Resolve references
     foreach my $grp (keys %dbgroup) {
 	resolve_grp($grp,\%dbgroup);
@@ -110,7 +106,6 @@ if ($op eq 'group') {
     while (my ($u,$d) = each %dbpasswd) {
 	$dbgroup{$u} = [ $u, 'x', $d->[PW_UID], ''];
     }
-
     $dbgroup{$users}=[$users,'x',$users_gid ,join(',',sort keys %dbpasswd) ];
     write_file($group_out,\%dbgroup,undef) || die "$group_out: $!\n";
 
@@ -229,4 +224,3 @@ sub pwfix {
     read_file($group_local,\%dblgroup) || die "$group_local: $!\n";
 }
 1;
-<
