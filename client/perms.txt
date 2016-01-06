@@ -1,0 +1,5 @@
+chpwd 755
+loader 755
+tlr-adm 755
+tlr-agent 755
+tlr-ed 755
