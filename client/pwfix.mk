@@ -10,6 +10,7 @@
 # GRN_USERS = users
 # GRI_USERS = 11000
 
+-include /etc/tlr.mk
 
 AWK = awk
 MAKEDB = makedb --quiet
@@ -77,7 +78,7 @@ $(VAR_DB)/passwd.db: $(SRCDIR)/passwd
 
 $(SRCDIR)/group.tmp: $(SRCDIR)/passwd $(SRCDIR)/group $(ETCDIR)/group
 	@$(PWFIX) group $@ $^
-	@$(PWFIX) grpfix $@ $^
+#	@$(PWFIX) grpfix $@ $^
 	@$(TOUCH) $@
 
 $(SRCDIR)/shadow.tmp: $(SRCDIR)/passwd $(SRCDIR)/shadow $(SRCDIR)/pwds
