@@ -171,6 +171,8 @@ unless ($keyfile) {
 	die "No keyfile specified\n";
     }
 }
+print STDERR "Using keyfile: $keyfile\n" if ($verbose);
+
 die "invalid port\n" unless $port =~ /^ \d+ $/x;
 die "invalid min sleep value\n" unless $min_sleep =~ /^ \d+ $/x;
 die "invalid max sleep value\n"  unless $max_sleep =~ /^ \d+ $/x;
