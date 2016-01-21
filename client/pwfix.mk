@@ -9,6 +9,9 @@
 # TLRLIB = .
 # GRN_USERS = users
 # GRI_USERS = 11000
+# GRI_ADMINS = 11001
+# SYSCFG = :
+# SYSCFG_ARGS =
 
 -include /etc/tlr.mk
 
@@ -19,7 +22,19 @@ DD = dd
 TOUCH = touch
 
 all: $(VAR_DB)/shadow.db $(VAR_DB)/passwd.db $(VAR_DB)/group.db \
-	$(ETCDIR)/ssh/known_hosts $(ROOT_KEYS)
+	$(ETCDIR)/ssh/ssh_known_hosts $(ROOT_KEYS) \
+	$(ETCDIR)/secrets.cfg $(ETCDIR)/msys.keys
+	[ -x $(SYSCFG) ] && $(SYSCFG) $(SYSCFG_ARGS) || true
+
+$(ETCDIR)/secrets.cfg: $(SRCDIR)/secrets.cfg
+	dd if=$^ of=$@
+	chmod 640 $@
+	chgrp $(GRI_ADMINS) $@
+
+$(ETCDIR)/msys.keys: $(SRCDIR)/admin_keys
+	$(AWK) '{ print $$2,$$3,$$1 }' $^ | $(DD) of=$@
+	chmod 640 $@
+	chgrp $(GRI_ADMINS) $@
 
 $(VAR_DB)/shadow.db: $(SRCDIR)/shadow.tmp
 	@echo -n "shadow.db... "
@@ -85,9 +100,10 @@ $(SRCDIR)/shadow.tmp: $(SRCDIR)/passwd $(SRCDIR)/shadow $(SRCDIR)/pwds
 	@$(PWFIX) shadow $@ $^
 	@$(TOUCH) $@
 
-$(ETCDIR)/ssh/known_hosts: $(SRCDIR)/known_hosts
+$(ETCDIR)/ssh/ssh_known_hosts: $(SRCDIR)/known_hosts
 	$(DD) if=$^ of=$@
 
 $(ROOT_KEYS): $(SRCDIR)/admin_keys
 	mkdir -p $$(dirname $@)
-	$(AWK) '{ print $$2,$$3 }' $^ | $(DD) of=$@
+	$(AWK) '{ print $$2,$$3,$$1 }' $^ | $(DD) of=$@
+	chmod 600 $@

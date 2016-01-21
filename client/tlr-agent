@@ -208,11 +208,12 @@ if (-f $dbdir.'serial.txt') {
 }
 my $sync_data_pid;
 
-if ($ENV{NOTIFY_SOCKET}) {
-    # OK, we are running under systemd.
-    print STDERR "NOTIFYSOCKET: $ENV{NOTIFY_SOCKET}\n";
-    system(qw(systemd-notify --ready --status=TLR-AGENT_READY));
-}
+#if ($ENV{NOTIFY_SOCKET}) {
+#    # OK, we are running under systemd.
+#    print STDERR "NOTIFYSOCKET: $ENV{NOTIFY_SOCKET}\n";
+#    #system(qw(systemd-notify --ready --status=TLR-AGENT_READY),'--pid='.$$);
+#    system(qw(systemd-notify --ready));
+#}
 
 
 while (1) {
