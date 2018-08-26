@@ -1,0 +1,37 @@
+#!/bin/sh
+#include prologue.sh
+#
+# Apply host based policies
+#
+
+require api-groups.sh
+require pol-hosts.sh
+require depcheck.sh
+
+known_hosts=/etc/ssh/ssh_known_hosts
+root_keys=/etc/ssh/userkeys/root/authorized_keys
+hosts_db=$TLR_DATA/hosts.d
+admin_keys=$TLR_DATA/root_keys
+master_keys=$( [ -f $hosts_db/$(get_master).pub ] && echo $hosts_db/$(get_master).pub || : )
+
+admin_users_keys="" ; q=""
+for i in $(groups_members admins || :)
+do
+  [ ! -f $TLR_DATA/users.d/$i.admpub ] && continue
+  admin_users_keys="$admin_users_keys$q$TLR_DATA/users.d/$i.admpub"
+  q=" "
+done
+
+depcheck $known_hosts $0 $(find $hosts_db -name '*.pub' -maxdepth 1 -mindepth 1 -type f) \
+	&& gen_known_hosts $known_hosts
+
+if depcheck $root_keys $0 $admin_keys $master_keys $admin_users_keys ; then
+  mkdir -p $(dirname $root_keys)
+  cat $admin_keys $master_keys $admin_users_keys > $root_keys </dev/null
+  chmod 700 $(dirname $root_keys)
+  chmod 600 $root_keys
+  chown root:root $(dirname $root_keys) $root_keys
+fi
+
+
+

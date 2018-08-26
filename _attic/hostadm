@@ -1,0 +1,129 @@
+#!/bin/sh
+#
+# Realm host administration
+#
+set -euf -o pipefail
+
+######################################################################
+#include lib.sh ###
+#!/bin/sh
+
+die() {
+  local rv="$1" ; shift
+  echo "$@" 1>&2
+  exit $rv
+}
+
+#end include ###
+
+#include ckdep.sh ###
+#!/bin/sh
+
+ckdep() {
+  local output="$1" ; shift
+  
+  [ ! -e "$output" ] && return 0
+  local i
+  for i in "$@"
+  do
+    [ "$i" -nt "$output" ] && return 0
+  done
+  return 1
+}
+
+#end include ###
+
+#include common.sh ###
+#!/bin/sh
+if [ -z "${TLR_HOME:-}" ] ;then
+  if [ -f "$HOME/data/known_hosts" ] ; then
+    export TLR_HOME=$HOME
+  elif [ -f "/etc/realm/data/known_hosts" ] ; then
+    export TLR_HOME=/etc/realm
+  else
+    die 120 "Error installing Realms or Must define a valid TLR_HOME" 
+  fi
+fi
+[ ! -d "$TLR_HOME" ] && die 119 "Invalid TLR_HOME defined"
+
+
+PATH=$PATH:/sbin:/usr/sbin:$(dirname $(readlink -f "$0"))
+[ -d $TLR_HOME/scripts ] && PATH=$PATH:$TLR_HOME/scripts
+export PATH
+
+[ -f $TLR_HOME/data/settings.sh ] && . $TLR_HOME/data/settings.sh
+
+
+#end include ###
+######################################################################
+
+[ -z "${ssh_opts:-}" ] && ssh_opts='command="<CMD> %s",no-agent-forwarding,no-port-forwarding,no-pty,no-X11-forwarding'
+[ -z "${hostcmd:-}" ] && hostcmd=$TLR_HOME/scripts/hostcmd
+
+######################################################################
+
+usage() {
+  echo "Usage:"
+  echo "   $0 op [options]"
+  echo "Use $0 help to see available ops"
+  exit 2
+}
+
+adm_update() {
+  if ckdep $TLR_HOME/host.keys $TLR_HOME/data/known_hosts ; then
+    $khfm export $(echo "$ssh_opts" | sed -e 's!<CMD>!'"$hostcmd"'!') > $TLR_HOME/host.keys
+    chmod 600 $TLR_HOME/host.keys
+    echo $TLR_HOME/host.keys updated 1>&2
+  fi
+  if ckdep $TLR_HOME/$ruser.keys $TLR_HOME/data/admin_keys ; then
+    khfm -f $TLR_HOME/data/admin_keys export > $TLR_HOME/$ruser.keys
+    chmod 600 $TLR_HOME/$ruser.keys
+    chown $ruser $TLR_HOME/$ruser.keys
+    chgrp $ruser $TLR_HOME/$ruser.keys
+    echo $TLR_HOME/$ruser.keys updated 1>&2
+  fi
+  if ckdep $etc/ssh/ssh_known_hosts $TLR_HOME/data/known_hosts ; then
+    $TLR_HOME/scripts/priv export_known_hosts
+    echo $etc/ssh/ssh_known_hosts updated 1>&2
+  fi
+}
+
+adm_enroll() {
+  $khfm add "$@" || die 1 "Error adding host $host"
+  adm_update
+}
+
+######################################################################
+
+
+if type khfm >/dev/null 2>&1 ; then
+  khfm="khfm -f $TLR_HOME/data/known_hosts"
+else
+  die 3 "Missing khfm script"
+fi
+
+
+######################################################################
+
+[ $# -eq 0 ] && usage
+op="$1" ; shift
+
+case "$op" in
+  enroll)
+    adm_enroll "$@"
+    ;;
+  -h|help|hlp)
+    cat <<-EOF
+	Usage:
+	- $0 enroll _hostname_ [keyline]
+	    Add hostname keys.  If keyline not specitied reads from stdin.
+	
+	Otherwise, khfm commands as follows...
+	EOF
+    $khfm help
+    ;;
+  *)
+    $khfm "$op" "$@"
+    adm_update
+    ;;
+esac

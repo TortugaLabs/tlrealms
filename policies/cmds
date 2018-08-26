@@ -1,0 +1,10 @@
+#!/bin/sh
+#include prologue.sh
+#
+# Update user scripts links...
+#
+
+for cmd in hostmgr groupmgr usermgr
+do
+  [ -x $TLR_SCRIPTS/$cmd ] && ln -sf $TLR_SCRIPTS/$cmd /usr/bin/$cmd
+done

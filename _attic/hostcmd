@@ -1,0 +1,100 @@
+#!/bin/sh
+#
+# Wrapper for handling incoming host requests
+#
+set -euf -o pipefail
+
+######################################################################
+#include lib.sh ###
+#!/bin/sh
+
+die() {
+  local rv="$1" ; shift
+  echo "$@" 1>&2
+  exit $rv
+}
+
+#end include ###
+
+#include common.sh ###
+#!/bin/sh
+if [ -z "${TLR_HOME:-}" ] ;then
+  if [ -f "$HOME/data/known_hosts" ] ; then
+    export TLR_HOME=$HOME
+  elif [ -f "/etc/realm/data/known_hosts" ] ; then
+    export TLR_HOME=/etc/realm
+  else
+    die 120 "Error installing Realms or Must define a valid TLR_HOME" 
+  fi
+fi
+[ ! -d "$TLR_HOME" ] && die 119 "Invalid TLR_HOME defined"
+
+
+PATH=$PATH:/sbin:/usr/sbin:$(dirname $(readlink -f "$0"))
+[ -d $TLR_HOME/scripts ] && PATH=$PATH:$TLR_HOME/scripts
+export PATH
+
+[ -f $TLR_HOME/data/settings.sh ] && . $TLR_HOME/data/settings.sh
+
+
+#end include ###
+######################################################################
+
+[ $# -eq 0 ] && die 1 "No  host specified"
+
+hostkey="$1" ; shift
+
+for i in "$@"
+do
+  eval "$i"
+done
+unset i
+
+sanitize_rsync() {
+  local cmd="$1" ; shift
+  [ x"$cmd" != x"rsync" ] && die "$cmd: Unknown command"
+
+  # echo "- $*" 1>&2
+
+  local i server=false sender=false
+  for i in "$@"
+  do
+    case "$i" in
+      --server)
+	server=true
+	;;
+      --sender)
+	sender=true
+	;;
+      -*)
+	continue
+	;;
+      
+      /*|*/../*)
+	die 3  "$i: Forbidden path"
+	;;
+    esac
+  done
+
+  if ! ( $server && $sender ) ; then
+    die 4 "rsync: Not allowed"
+  fi
+
+  # Identify files owned by root
+  (
+    echo '#user'  $(find data -mindepth 1 -user $(id -u))
+    echo '#group' $(find data -mindepth 1 -group $(id -g))
+  ) > data/_attr.txt
+  exec "$cmd" "$@"
+}
+
+[ -z "${SSH_ORIGINAL_COMMAND:-}" ] && die 2 "NO SSH_ORIGINAL_COMMAND"
+
+case "$SSH_ORIGINAL_COMMAND" in
+  rsync*)
+    sanitize_rsync $SSH_ORIGINAL_COMMAND
+    ;;
+  *)
+   die 1 "$SSH_ORIGINAL_COMMAND: Permission Denied"
+esac
+

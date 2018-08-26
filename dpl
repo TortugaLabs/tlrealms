@@ -1,0 +1,164 @@
+#!/bin/sh
+#
+# Deploy script...
+#
+# This script is used to deploy scripts 
+#
+set -euf -o pipefail
+
+fixfile_url="https://github.com/TortugaLabs/ashlib/raw/master/fixfile.sh"
+binder="include/binder.php"
+
+if [ $# -eq 0 ] ; then
+  echo "Usage: $0 [--init] target"
+  exit 1
+fi
+
+init_db=false
+while [ $# -gt 0 ] ;do
+  case "$1" in
+  --init|-I)
+    init_db=true
+    ;;
+  *)
+    break
+    ;;
+  esac
+  shift
+done
+
+cd "$(dirname "$0")" || exit 19
+target="$1" ; shift
+
+#####################################################################
+# Support functions
+. lib/shescape.sh
+
+rexec() {
+  local i
+  for i in "$@"
+  do
+    declare -f "$i"
+    echo "$i"
+  done
+}
+# Copying stuff
+recv_file() {
+  base64 -d  | gunzip | fixfile "$@"
+}
+send_file() {
+  local check=false""
+  if [ x"$1" = x"--check" ] ; then
+    check="$2"
+    shift 2
+  fi
+  local src="$1" eof_line="__EOF_${RANDOM}_${RANDOM}_EOF__" i; shift
+  echo ''
+  if [ -n "$check" ] ; then
+    echo "if [ ! -f $(shell_escape "$check") ] ; then"
+  fi
+  echo -n "recv_file"
+  for i in "$@"
+  do
+    echo -n " $(shell_escape "$i")"
+  done
+  echo "<< '$eof_line'"
+  $binder -t "$src" | gzip | base64
+  echo ''
+  echo "$eof_line"
+  if [ -n "$check" ] ; then
+    echo "fi"
+  fi
+}
+#####################################################################
+payload1() {
+  mkdir -p /etc/tlr /etc/tlr-local
+  ( cd /etc/tlr && mkdir -p scripts policies lib data )
+}
+payload_server() {
+  local wwwdir=/var/www/localhost/htdocs
+  mkdir -p $wwwdir/tlr $wwwdir/tlrsec
+  
+  mkdir -p /etc/tlr-local/qdir ; chmod 777 /etc/tlr-local/qdir
+  mkdir -p /etc/tlr-local/run
+  mkdir -p /var/log/tlr
+
+  ln -sf /etc/tlr/scripts/www-enroll.cgi $wwwdir/tlr/enroll.cgi
+  ln -sf /etc/tlr/scripts/www-enrollme.sh.in $wwwdir/tlr/enrollme.sh.in
+  ln -sf /etc/tlr/scripts/www-sync.cgi $wwwdir/tlr/sync.cgi
+  ln -sf /etc/tlr/scripts/swww-doenroll.cgi $wwwdir/tlrsec/doenroll.cgi
+  
+  (
+    # Secure web pages...
+    if [ -f /etc/tlr/settings.sh ] ; then
+      . /etc/tlr/settings.sh
+    fi
+    if [ -z "${domain:-}" ] ; then
+      basic=""
+      digest="# "
+      domain="TL|Realm"
+    else
+      basic="# "
+      digest=""
+    fi
+    fixfile --mode=644 $wwwdir/tlrsec/.htaccess <<-EOF
+	# Secured zone
+	
+	${basic}AuthName "TL|Realm Password Required"
+	${basic}AuthType Basic
+	${basic}AuthUserFile "/etc/tlr-local/htpasswd.txt"
+	
+	${digest}AuthName "$domain"
+	${digest}AuthType Digest
+	${digest}AuthDigestDomain /tlrsec/
+	${digest}AuthDigestProvider file
+	${digest}AuthUserFile "/etc/tlr-local/htdigest.txt"
+	
+	AuthGroupFile "/etc/tlr-local/htgroup.txt"
+	Require group admins
+	EOF
+  )
+  local hosts_d=/etc/tlr/data/hosts.d
+  mkdir -p $hosts_d
+
+  find /etc/ssh -name 'ssh_host_*_key.pub' -type f -print0 \
+    | xargs -0 cat > $hosts_d/$(hostname).pub
+  serial_txt=/etc/tlr/data/serial.txt
+  if [ ! -f $serial_txt ] ; then
+    echo 0.0 > $serial_txt
+  fi
+  /etc/tlr/scripts/apply_policies
+}
+payload_initdb() {
+  ( cd /etc/tlr/data ; mkdir -p hosts.d users.d groups.d )
+  if [ -z "$(/etc/tlr/scripts/groupmgr list admins)" ] ; then
+    /etc/tlr/scripts/groupmgr add admins
+  fi
+}
+
+#####################################################################
+
+(
+  wget -nv -O- "$fixfile_url"
+  declare -f recv_file
+  rexec payload1
+
+  for assets in scripts policies lib
+  do
+    find $assets -type f | while read asset
+    do
+      send_file "$asset" -D --mode=755 /etc/tlr/$asset
+    done
+  done
+  rexec payload_server
+  if $init_db ; then
+    rexec payload_initdb
+    find sample -type f | while read src
+    do
+      dst="/etc/tlr/$(echo "$src" | sed -e 's!^sample/!!')"
+      mode=$(awk '$1 == "#mode" { print $2 }' $src)
+      [ -z "$mode" ] && mode=644
+      send_file --check "$dst" "$src" -D --mode=$mode "$dst"
+    done
+  fi
+) | ssh -T "$target"

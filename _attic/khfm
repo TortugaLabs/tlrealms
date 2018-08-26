@@ -1,0 +1,165 @@
+#!/bin/sh
+#
+# Manage known hosts keys files...
+#
+set -euf -o pipefail
+
+export PATH=$PATH:/sbin:/usr/sbin
+KH_FILE="$HOME/.ssh/known_hosts"
+
+######################################################################
+#include lib.sh ###
+#!/bin/sh
+
+die() {
+  local rv="$1" ; shift
+  echo "$@" 1>&2
+  exit $rv
+}
+
+#end include ###
+######################################################################
+
+usage() {
+  echo "Usage:"
+  echo "   $0 [-f file] op [options]"
+  echo "Use $0 help to see available ops"
+  exit 2
+}
+
+khfm_add() {
+  [ $# -eq 0 ] && die 3 "Must specify hostname to add"
+  local newkey="$1" ; shift
+
+  if [ $# -gt 1 ] ; then
+    [ -z "$(echo $1 | tr -d 0-9)" ] && die 5 "Invalid key type: $1"
+    echo $newkey $* >> $KH_FILE
+  elif [ $# -eq 0 ] ; then
+    local ktype kdat
+    while read ktype kdat
+    do
+      [ -z "$ktype" ] && continue
+      [ -z "$kdat"  ] && continue
+      if [ -z "$(echo $ktype | tr -d 0-9)" ] ; then
+	echo "Ignoring: $ktype $kdat" 1>&2
+	continue
+      fi
+      echo $newkey $ktype $kdat >> $KH_FILE
+    done
+  else
+    die 4 "Must specify key type and data"
+  fi
+}
+
+khfm_ls() {
+  local format='{print $1}'
+  while [ $# -gt 0 ] ; do
+    case "$1" in
+      -l)
+        format='{print $1,$2}'
+        ;;
+      *)
+		break
+		;;
+	esac
+	shift
+  done
+  
+  awk "$format" < $KH_FILE | sort -u
+}
+
+khfm_find() {
+  [ $# -lt 1 ] && die 2 "Must specify key to find"
+  [ $# -gt 2 ] && usage
+  
+  if [ $# -eq 1 ] ; then  
+    awk '$1 == "'"$1"'" { print }' < $KH_FILE
+  else
+    awk '$1 == "'"$1"'" && $2 == "'"$2"'" { print }' < $KH_FILE
+  fi
+}
+
+khfm_rm() {
+  [ $# -lt 1 ] && die 2 "Must specify key to remove"
+  [ $# -gt 2 ] && usage
+
+  local s="$(sed s/^/:/ <$KH_FILE)"
+
+  if [ $# -eq 1 ] ; then
+    local d="$(echo "$s" | awk '$1 != ":'"$1"'" { print }')"
+  else
+    local d="$(echo "$s" | awk '$1 != ":'"$1"'" || $2 != "'"$2"'" { print }')"
+  fi
+  if [ x"$s" != x"$d" ] ; then
+    cp $KH_FILE $KH_FILE~
+    echo "$d" | sed 's/^://' | grep -v '^$' > $KH_FILE
+    echo "$KH_FILE: updated" 1>&2
+  fi
+}
+
+khfm_export() {
+  if [ $# -eq 0 ] ; then
+    local fmt=''
+  else
+    local fmt="$* "
+  fi
+  (
+    while read name data
+    do
+      printf "$fmt" "$name"
+      echo "$data"
+    done
+  ) < $KH_FILE
+}
+
+######################################################################
+
+if [ $# -gt 1 ] ; then
+  if [ x"$1" = x"-f" ] ; then
+    KH_FILE="$2"
+    shift 2 || die 2 "No KH file specified"
+  fi
+fi
+
+[ -f "$KH_FILE" ] || die 3 "$KH_FILE: not found"
+
+######################################################################
+
+[ $# -eq 0 ] && usage
+op="$1" ; shift
+
+case "$op" in
+  add)
+    khfm_add "$@"
+    ;;
+  ls)
+    khfm_ls "$@"
+    ;;
+  find)
+    khfm_find "$@"
+    ;;
+  rm)
+    khfm_rm "$@"
+    ;;
+  show)
+    cat "$KH_FILE"
+    ;;
+  export)
+    khfm_export "$@"
+    ;;
+  -h|help|hlp)
+    cat <<-EOF
+	Usage:
+	- $0 add _hostname_ [keyline]
+	    Add hostname keys.  If keyline not specitied reads from stdin.
+	- $0 ls [-l]
+	- $0 find _host_ [type]
+	- $0 rm _host_ [type]
+	- $0 export [format]
+	EOF
+    ;;
+  *)
+    echo "$op: Unknown operation" 1>&2
+    usage
+    ;;
+esac

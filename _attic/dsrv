@@ -1,0 +1,50 @@
+#!/bin/sh
+#
+# Deploy server scripts...
+#
+#~ rsudo=false
+#~ while [ $# -gt 0 ]
+#~ do
+  #~ case "$1" in
+  #~ --rsudo) rsudo=true ;;
+  #~ *) break ;;
+  #~ esac
+  #~ shift
+#~ done
+if [ $# -eq 0 ] ; then
+  echo "Usage: $0 target"
+  exit 1
+fi
+
+cd "$(dirname "$0")" || exit 19
+target="$1" ; shift
+
+#
+# Preparation
+#
+fxcmd='/root/fixfile'
+fixfile="https://github.com/TortugaLabs/ashlib/raw/master/fixfile.sh"
+tmpfile=$(mktemp)
+trap "rm $tmpfile" EXIT
+wget -nv -O$tmpfile "$fixfile"
+. "$tmpfile"
+rm "$tmpfile"
+trap '' EXIT
+(
+  echo '#!/bin/sh'
+  declare -f fixfile
+  echo 'fixfile "$@"'
+) | ssh "$target" tee "$fxcmd" | md5sum
+ssh "$target" chmod 755 "$fxcmd"
+
+
+wwwdir=/var/www/localhost/htdocs
+bindir=/usr/local/bin
+
+lib/binder.php -t scripts/enroll.cgi | ssh "$target" "$fxcmd" -D --mode=755 $wwwdir/tlr/enroll.cgi
+lib/binder.php -t scripts/enrollme.sh.in | ssh "$target" "$fxcmd" -D --mode=644 $wwwdir/tlr/enrollme.sh.in
+lib/binder.php -t scripts/mkpasswd.py | ssh "$target" "$fxcmd" -D --mode=755 $bindir/mkpasswd
+ssh "$target" mkdir -p -m 777 $wwwdir/tlr/qdir
+
+
+

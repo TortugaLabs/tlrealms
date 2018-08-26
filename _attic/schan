@@ -1,0 +1,52 @@
+#!/bin/sh
+version="0.1"
+#
+# Forced SSH command handler
+#
+set -euf -o pipefail
+
+access_dir="/etc/tlops"
+
+die() {
+  local rc="$1" ; shift
+  echo "$@"
+  exit $rc
+}
+
+[ $# -eq 0 ] && die 1 "Unconfigured channel"
+guest="$1" ; shift
+[ ! -d "$access_dir/$guest" ] && die 2 "$guest: Undefined guest"
+
+[ -f "$access_dir/sshops.sh" ] && . "$access_dir/common.ssh"
+[ ! -f "$access_dir/$guest/sshops.sh" ] && die 3 "$guest: permission denied"
+. "$access_dir/$guest/sshops.sh"
+
+cmd="$(echo "$SSH_ORIGINAL_COMMAND" | (read a b; echo $a))"
+args="$(echo "$SSH_ORIGINAL_COMMAND" | (read a b; echo "$b"))"
+
+for op in "tlop_${guest}_${cmd}" "tlop_${cmd}"
+do
+  type "$op" >/dev/null 2>&1 || continue
+  "$op" "$args"
+  exit $?
+done
+die 4 "$cmd: not found"
+
+#
+# /etc/tlops
+# /etc/tlops/common.sh|/etc/tlops/sshops.sh
+# /etc/tlops/{guest}.sh
+# /etc/tlops/{guest|keyid}
+#	psk.txt
+#	sshops.sh
+#	{auth}.sh
+#
+### psk.txt
+# [auth_id] [psk using uuidgen?]
+#
+# Others are just functions
+#
+# tlops_{cmd}
+# tlops_{guest}_{cmd}
+# tlops_{guest}_{auth}_{cmd}
+#

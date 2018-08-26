@@ -1,0 +1,83 @@
+#!/bin/sh
+#include prologue.sh
+#
+# Apply group related policies
+#
+
+require depcheck.sh
+require pol-users.sh
+require pol-groups.sh
+
+group_txt=$TLR_LOCAL/group.txt
+if depcheck $group_txt $0 $(groupspol_inputs) $(userspol_pwdfiles) ; then
+  (
+    gen_groups
+    gen_usersgroup ${GNAME_USERS:-users} ${GID_USERS:-11000} $(userspol_pwdfiles)
+  ) | sort -t : -k 3 -n > $group_txt
+fi
+
+webuser=apache
+if id $webuser >/dev/null 2>&1 ; then
+  htgroup=$TLR_LOCAL/htgroup.txt
+  if depcheck $htgroup $group_txt $0 ; then
+    cut -d : -f 1,4 $group_txt | tr ', ' ' :' > $htgroup
+    chown $webuser $htgroup
+  fi
+fi
+
+
+role user_login
+
+if has_role user_login ; then
+  #
+  # Merge TL|Realm users with /etc/group files
+  #
+  for g1 in group gshadow
+  do
+    [ ! -f /etc/$g1 ] && continue
+    [ -f $TLR_LOCAL/$g1.g1 ] && continue
+    cp -a /etc/$g1 $TLR_LOCAL/$g1.g1
+  done
+  
+  if [ ${GID_MIN:=11000} -lt ${UID_MIN:=2000} ] ; then
+    min_id=$GID_MIN
+  else
+    min_id=$UID_MIN
+  fi
+  max_id=${XID_MAX:-65500}
+  
+  etc_group=/etc/group ; group_tmp=$TLR_LOCAL/group.tmp
+  if depcheck $etc_group $0 $group_txt ; then
+    (
+      awk -vFS=":" '$3 < '$min_id' || $3 > '$max_id $etc_group | sort -t : -k 3 -n
+      cat $group_txt
+    ) > $group_tmp
+    if [ $(wc -l < $group_tmp) -gt 5 ] ; then
+      if ! cmp $group_tmp $etc_group ; then
+	cp -a $etc_group ${etc_group}~
+	#cat $group_tmp > $etc_group
+      else
+	: touch $etc_group
+      fi
+    fi
+  fi
+  etc_gshadow=/etc/gshadow ; gshadow_tmp=$TLR_LOCAL/gshadow.tmp
+  if [ -f $etc_gshadow ] ; then
+    if depcheck $etc_gshadow $0 $group_tmp ; then
+      awk -f $TLR_LIB/grfix.awk -vshadow=$etc_gshadow -vmin=$min_id -vmax=$max_id $group_tmp > $gshadow_tmp
+      if [ $(wc -l < $shadow_tmp) -gt 5 ] ; then
+	if ! cmp $shadow_tmp $etc_shadow ; then
+	  cp - $etc_shadow ${etc_shadow}~
+	  #cat $shadow_tmp > $etc_shadow
+	fi
+      fi
+    fi # depchk
+  fi # -f $tc_gshadow
+elif has_role passwdb ; then
+  #
+  # Create /var/db files (for nsswitch.conf)
+  #
+  :
+fi
+
+

@@ -1,0 +1,57 @@
+#!/bin/sh
+#
+# Script to enroll a host into a realm
+#
+set -euf -o pipefail
+[ -z "${TLR_SERVER:-}" ] && TLR_SERVER='<TLR_SERVER>'
+run="echo -- "
+
+#include ../lib/urlencode.sh
+
+
+hostname="$(uname -n)"
+echo "Enrollment as: $hostname"
+
+workdir=$(mktemp -d)
+trap "rm -rf $workdir" EXIT
+
+wget -O "$workdir/payload.html" "http://$TLR_SERVER/tlr/enroll.cgi?host=$(urlencode "$hostname")"
+grep "MSG: " "$workdir/payload.html" || :
+awk '/__BEGIN__/{flag=1;next}/__END__/{flag=0}flag' < "$workdir/payload.html" \
+	| base64 -d \
+	| tar -C "$workdir" -zxf -
+
+find /etc/ssh -name 'ssh_host_*' -type f -print0 | xargs -0 $run rm -f
+find "$workdir" -name 'ssh_host_*' -type f -print | while read f
+do
+  $run cp "$f" /etc/ssh
+done
+
+dotssh="$HOME/.ssh"
+
+$run mkdir -p "$dotssh"
+$run chmod 700 "$dotssh"
+if [ -f "$dotssh"/authorized_keys ] ; then
+  $run mv "$dotssh"/authorized_keys "$dotssh"/authorized_keys.backup
+fi
+$run cp "$workdir/admin_key.pub" "$dotssh"/authorized_keys
+$run chmod 600 "$dotssh"/authorized_keys
+
+# Configure sshd...
+sshd_config=/etc/ssh/sshd_config
+extra_keys=/etc/ssh/userkeys/%u/authorized_keys
+if ! grep -q "$extra_keys" "$sshd_config" ; then
+  echo "Updating $sshd_config"
+  ntxt="$(
+	sed -e "s/^\(.*AuthorizedKeysFile\)/#TLR# \1/" -e 's/^/:/' $sshd_config
+	echo ':'
+	echo ":#TLR## Enabled $extra_keys for TLR deployed keys"
+	echo ":AuthorizedKeysFile      .ssh/authorized_keys $extra_keys"
+	)"
+  echo "$ntxt" | sed -e 's/^://' | $run tee $sshd_config | md5sum || echo $?
+fi
+
+mkdir -p /etc/tlr /etc/tlr-local /var/log/tlr
+
+echo '='
+cat "$workdir/metadata.cfg"

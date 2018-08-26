@@ -1,0 +1,128 @@
+#!/bin/sh
+#include prologue.sh
+#
+# A priviledge escalated server...
+#
+require api-serial.sh
+require api-hosts.sh
+
+cd /
+
+queue_dir="$TLR_LOCAL/qdir"
+srvpipe=$TLR_LOCAL/run/priv
+trap "rm -f $srvpipe" EXIT
+trap "rm -f $srvpipe ; exit" INT
+
+if [ ! -p "$srvpipe" ] ; then
+  rm -f "$srvpipe"
+  mkfifo "$srvpipe"
+  chmod 422 "$srvpipe"
+fi
+
+msg() {
+  local log="$1" ; shift
+  echo "$(date +%Y-%m-%d+%H:%M:%S): $*" | tee -a "$TLR_LOGS/$log"
+}
+
+op_enroll() {
+  local vv="$1"
+  
+  if (echo "$vv" | grep -q "^purge ") then
+    vv=$(echo "$vv" | sed -e 's/purge //');
+    if [ x"$vv" = x"enrollment" ] ; then
+      rm -f $TLR_LOGS/enrollment
+      msg enrollment "PURGED!"
+    else
+      msg enrollment "Purging $vv"
+      if [ -d "$queue_dir/$vv.d" ] ; then
+        rm -rf "$queue_dir/$vv.d"
+      else
+	msg enrollment "Missing Queue Entry $vv"
+      fi
+      if [ -f "$TLR_LOGS/enroll-$vv" ] ; then
+        rm -f "$TLR_LOGS/enroll-$vv"
+      else
+	msg enrollment "Missing LOG entry $vv"
+      fi
+    fi
+  elif [ -f "$queue_dir/$vv.d/metadata.cfg" ] ; then
+    local name remip
+    if ! name="$(hosts_namechk "$(echo "$vv" | cut -d, -f4)")" ; then
+      msg enrollment "Invalid ENROLL name: $vv"
+    else
+      msg enrollment "Enrolling $vv"
+      (
+	exec 2>&1
+	remip="$(echo "$vv" | cut -d, -f3)"
+	echo "ENROLLING \"$name\" ($remip)"
+
+	# - add keys to TLR_DATA/hosts.d
+	find "$queue_dir/$vv.d" -maxdepth 1 -mindepth 1 -type f -name "ssh_host_*.pub" -print0 \
+	  | xargs -0 cat | hosts_add "$name"
+
+	# - apply local policy
+	apply_policies
+
+	# - rsync TLR_HOME to rhost and aply policies...
+	if [ "$name" = "$(hostname)" ] ; then
+	  echo "Adding $name to itself..."
+	else
+	  SSH_IP_OVERRIDE="$remip" SSH_IDENTITY="$queue_dir/$vv.d/admin_key" $TLR_SCRIPTS/syncr -v "$name"
+	  SSH_IP_OVERRIDE="$remip" SSH_IDENTITY="/etc/ssh/ssh_host_rsa_key" $TLR_SCRIPTS/syncr --rsh "$name" uptime
+	fi
+      ) | (
+	while read ln
+	do
+	  msg "enroll-$vv" "$ln"
+	done
+      )
+    fi
+  else
+    msg enrollment "Invalid ENROLL request: \"$vv\""
+  fi
+}
+
+op_sync() {
+  local \
+	client="$(echo "$1" | cut -d, -f1)" \
+	serial="$(echo "$1" | cut -d, -f2)" \
+	remip="$(echo "$1" | cut -d, -f3)"
+  (
+    exec 2>&1
+    [ -z "$client" ] && die 0 "Invalid sync request ($1)"
+    [ -z "$serial" ] && die 0 "Incomplete sync request ($1)"
+    c_serial=$(serial_get)
+    [ x"$serial" = x"$c_serial" ] && die 0 "$client is up to date"
+    echo "SYNC REQUEST: client=$client serial=$serial$([ -n "$remip" ] && echo " ($remip)")"
+    SSH_IP_OVERRIDE="$remip" SSH_IDENTITY="/etc/ssh/ssh_host_rsa_key" $TLR_SCRIPTS/syncr -v "$client"
+  ) | (
+    while read ln
+    do
+      msg "sync" "$ln"
+    done
+  )
+}
+
+msg srvpriv "Starting ($$)..."
+
+while : ; do
+  (while read op args ; do
+    case "$op" in
+    quit)
+      exit 1
+      ;;
+    enroll)
+      # Enroll stuff
+      #~ echo "ENROLL: \"$args\""
+      op_enroll "$args"
+      ;;
+    sync)
+      op_sync "$args"
+      ;;
+    *)
+      echo "op=$op args=$args"
+    esac
+  done; exit 0) < $srvpipe || break
+done
+
+msg srvpriv "exiting ($$)"

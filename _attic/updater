@@ -1,0 +1,173 @@
+#!/bin/sh
+#
+# Realm host administration
+#
+set -euf -o pipefail
+
+######################################################################
+#include lib.sh ###
+#!/bin/sh
+
+die() {
+  local rv="$1" ; shift
+  echo "$@" 1>&2
+  exit $rv
+}
+
+#end include ###
+
+#include ckdep.sh ###
+#!/bin/sh
+
+ckdep() {
+  local output="$1" ; shift
+  
+  [ ! -e "$output" ] && return 0
+  local i
+  for i in "$@"
+  do
+    [ "$i" -nt "$output" ] && return 0
+  done
+  return 1
+}
+
+#end include ###
+
+#include common.sh ###
+#!/bin/sh
+if [ -z "${TLR_HOME:-}" ] ;then
+  if [ -f "$HOME/data/known_hosts" ] ; then
+    export TLR_HOME=$HOME
+  elif [ -f "/etc/realm/data/known_hosts" ] ; then
+    export TLR_HOME=/etc/realm
+  else
+    die 120 "Error installing Realms or Must define a valid TLR_HOME" 
+  fi
+fi
+[ ! -d "$TLR_HOME" ] && die 119 "Invalid TLR_HOME defined"
+
+
+PATH=$PATH:/sbin:/usr/sbin:$(dirname $(readlink -f "$0"))
+[ -d $TLR_HOME/scripts ] && PATH=$PATH:$TLR_HOME/scripts
+export PATH
+
+[ -f $TLR_HOME/data/settings.sh ] && . $TLR_HOME/data/settings.sh
+
+
+#end include ###
+######################################################################
+
+[ -z "${etc:-}" ] && etc=/etc
+[ -z "${vardb:-}" ] && vardb=/var/db
+
+[ -z "${rusersgrp:-}" ] && rusersgrp=rusers
+[ -z "${rusersgid:-}" ] && rusersgid=11000
+[ -z "${admgrp:-}" ] && admgrp=11001
+
+[ -z "${server:-}" ] && server=localhost
+[ -z "${ruser:-}" ] && ruser=realm
+
+[ -z "${tlrdat:-}" ] && tlrdat=$TLR_HOME/data
+
+######################################################################
+rsync_cmd() {
+  rsync -az --delete -e 'ssh -i /etc/ssh/ssh_host_rsa_key' "$@" --exclude '*~'
+}
+
+usage() {
+  echo "Usage:"
+  echo "   $0 op [options]"
+  echo "Use $0 help to see available ops"
+  exit 2
+}
+
+apply_updates() {
+  # Make sure ownership is corrected
+  if [ -f $tlrdat/_attr.txt ] ; then
+    (
+      cd $TLR_HOME
+      while read a b
+      do
+	case "$a" in
+	  '#user')
+	    chown $(id -u) $tlrdat $b
+	    ;;
+	  '#group')
+	    chgrp $(id -g) $tlrdat $b
+	    ;;
+	esac
+      done
+    ) <  $tlrdat/_attr.txt
+  fi
+
+  #if ckdep $etc/secrets.cfg $tlrdat/secrets.cfg ; then
+  #install --backup --compare --mode=640 --group=$admgrp $etc/secrets.cfg $tlrdat/secrets.cfg
+  #fi
+
+  #if ckdep $etc/msys.keys $tlrdat/admin_keys ; then
+  #  hkfm -f $tlrdat/admin_keys > $etc/msys.keys
+  #  chmod 600 $etc/msys.keys
+  #fi
+
+  if ckdep $vardb/shadow.db $tlrdat/passwd $tlrdat/shadow $tlrdat/pwds ; then
+    pwfix-shadow -vpasswd=$tlrdat/passwd -vshadow_in=$tlrdat/shadow -vpwds=$tlrdat/pwds \
+	  | awk 'BEGIN { FS=":"; OFS=":" }
+		   /^[ \t]*$/ { next }
+		   /^[ \t]*#/ { next }
+		   /^[^#]/ { printf ".%s ", $1; print }' \
+	  | makedb --quiet -o $vardb/shadow.db -
+    if [ -f $vardb/shadow.db ] ; then
+      chmod 600 $vardb/shadow.db
+      chown $(id -u):$(id -g) $vardb/shadow.db
+    fi
+  fi
+
+  if ckdep $vardb/passwd.db $tlrdat/passwd ; then
+    awk 'BEGIN { FS=":"; OFS=":" }
+		   /^[ \t]*$/ { next }
+		   /^[ \t]*#/ { next }
+		   /^[^#]/ { printf ".%s ", $1; print;
+			     printf "=%s ", $3; print }' $tlrdat/passwd \
+	  | makedb --quiet -o $vardb/passwd.db -
+  fi
+
+  if ckdep $vardb/group.db $tlrdat/passwd $tlrdat/group $etc/group ; then
+    pwfix-group -vpasswd=$tlrdat/passwd -vgroup_in=$tlrdat/group -vgroup_local=$etc/group -vusers=$rusersgrp -vugid=$rusersgid \
+	  | awk 'BEGIN { FS=":"; OFS=":" }
+		   /^[ \t]*$/ { next }
+		   /^[ \t]*#/ { next }
+		   /^[^#]/ { printf ".%s ", $1; print;
+			     printf "=%s ", $3; print;
+			     if ($4 != "") {
+			       split($4, grmems, ",");
+			       for (memidx in grmems) {
+				 mem=grmems[memidx];
+				 if (members[mem] == "")
+				   members[mem]=$3;
+				 else
+				   members[mem]=members[mem] "," $3;
+			       }
+			       delete grmems; } }
+		   END { for (mem in members)
+			   printf ":%s %s %s\n", mem, mem, members[mem]; }' \
+	  | makedb --quiet -o $vardb/group.db -
+  fi
+
+  if ckdep $etc/ssh/ssh_known_hosts $tlrdat/known_hosts ; then
+    install --backup --mode=644 $tlrdat/known_hosts $etc/ssh/ssh_known_hosts
+  fi
+}
+
+dl_updates() {
+  rsync_cmd ${ruser}@${server}:data/ $TLR_HOME/data
+  rsync_cmd ${ruser}@${server}:scripts/ $TLR_HOME/scripts
+}
+
+
+######################################################################
+[ $# -eq 0 ] && set - dl_updates apply_updates
+
+for op in "$@"
+do
+  eval $op
+done
