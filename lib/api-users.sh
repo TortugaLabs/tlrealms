@@ -5,18 +5,25 @@ require shescape.sh
 
 users_namechk() {
   local in="$(echo "$1" | tr A-Z a-z)"
-  local out="$(echo "$in" | tr -dc 'a-z0-9_-')"
+  local out="$(echo "$in" | tr -dc 'a-z0-9._-')"
   echo "$out"
   [ "$out" = "$in" ] && return 0
   return 1
+}
+
+find_user_files() {
+  local name="$1"
+  # make sure we don't get false positives from user names with "." in them...
+  find $TLR_DATA/users.d -name "$name"'.*' -maxdepth 1 -mindepth 1 \
+	| grep '/'"$name"'\.[a-z0-9]*$'
 }
 
 users_del() {
   local name supdate=false i
   for name in "$@"
   do
-    set -x
-    local pwfiles=$(find $TLR_DATA/users.d -name "$name"'.*' -maxdepth 1 -mindepth 1)
+    #set -x
+    local pwfiles=$(find_user_files "$name")
     [ -z "$pwfiles" ] && continue
     rm -rf $pwfiles && supdate=true || :
     
