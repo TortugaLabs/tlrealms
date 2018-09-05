@@ -1,0 +1,97 @@
+#!/bin/sh
+#include prologue.sh
+#
+# Setup scripts
+#
+# This script contains snippets to perform different setup functions...
+#
+[ $# -eq 0 ] && die 10 "$0: op [args]"
+
+require fixfile.sh
+
+setup_www() {
+  local mode="$1" wwwdir="$2"
+  
+  mkdir -p $wwwdir/tlr $wwwdir/tlrsec
+  mkdir -p $TLR_LOCAL/qdir ; chmod 777 $TLR_LOCAL/qdir
+  mkdir -p $TLR_LOCAL/run
+  mkdir -p $TLR_LOGS
+  
+  ln -sf $TLR_SCRIPTS/www-enroll.cgi $wwwdir/tlr/enroll.cgi
+  ln -sf $TLR_SCRIPTS/www-enrollme.sh.in $wwwdir/tlr/enrollme.sh.in
+  ln -sf $TLR_SCRIPTS/www-sync.cgi $wwwdir/tlr/sync.cgi
+  ln -sf $TLR_SCRIPTS/swww-doenroll.cgi $wwwdir/tlrsec/doenroll.cgi
+  
+  if [ x"$mode" = x"digest" ] ; then
+    basic="# "
+    digest=""
+    domain="${domain:-TL|Realm}"
+  else
+    basic=""
+    digest="# "
+    domain="${domain:-tl-domain}"
+  fi
+  fixfile --mode=644 $wwwdir/tlrsec/.htaccess <<-EOF
+	# Secured zone
+	
+	${basic}AuthName "TL|Realm Password Required"
+	${basic}AuthType Basic
+	${basic}AuthUserFile "/etc/tlr-local/htpasswd.txt"
+	
+	${digest}AuthName "$domain"
+	${digest}AuthType Digest
+	${digest}AuthDigestDomain /tlrsec/
+	${digest}AuthDigestProvider file
+	${digest}AuthUserFile "/etc/tlr-local/htdigest.txt"
+	
+	AuthGroupFile "/etc/tlr-local/htgroup.txt"
+	Require group admins
+	EOF
+}
+
+setup_demo() {
+  groupmgr add admins
+  groupmgr add royals
+  groupmgr add knights
+  groupmgr add nobles
+  groupmgr add commoners
+
+  usermgr add --uid='#' --gid='#' --gecos='Aurthur Pendragon' arthur
+  usermgr add --uid='#' --gid='#' --gecos='Morgan Le Fey' morgana
+  usermgr add --uid='#' --gid='#' --gecos='Guinevere the Queee' guinie
+  usermgr add --uid='#' --gid='#' --gecos='Sancho Panza' sancho
+  usermgr add --uid='#' --gid='#' --gecos='Sid Bedivere' sid
+  usermgr add --uid='#' --gid='#' --gecos='Sir Lancelot' lancelot
+  usermgr add --uid='#' --gid='#' --gecos='Sir Gawain' gawain
+  usermgr add --uid='#' --gid='#' --gecos='Sir Galahad' galahad
+  usermgr add --uid='#' --gid='#' --gecos='Sir Kay' kay
+  usermgr add --uid='#' --gid='#' --gecos='Sir Percivale' percivale
+
+  groupmgr adduser royals arthur guinie
+  groupmgr adduser knights lancelot gawain galahad kay percivale
+  groupmgr adduser commoners sid sancho
+  groupmgr adduser nobles @knights @royals morgana
+  groupmgr adduser admins @royals
+}
+
+op="$1" ; shift
+
+
+case "$op" in
+www)
+  setup_www "$@"
+  ;;
+demo)
+  setup_demo "$@"
+  ;;
+help)
+  cat <<-EOF
+	Sub-commands:
+	- $0 www : setup web server
+	- $0 demo : setup demo users
+	EOF
+  ;;
+*)
+  die 20 "Invalid op: $op"
+  ;;
+esac
