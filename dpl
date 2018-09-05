@@ -86,6 +86,7 @@ payload_server() {
   /etc/tlr/scripts/apply_policies
 }
 payload_initdb() {
+  sed -i~ -e "s/\"<SERVER>\"/\"$(hostname)\"/" "/etc/tlr/settings.sh"
   if [ -z "$(/etc/tlr/scripts/groupmgr list admins)" ] ; then
     /etc/tlr/scripts/groupmgr add admins
   fi
