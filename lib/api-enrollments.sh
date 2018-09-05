@@ -1,0 +1,177 @@
+#!/bin/sh
+require api-serial.sh
+require api-hosts.sh
+
+enrolls_key_types() {
+  echo "dsa ecdsa ed25519 rsa"
+}
+
+enrolls_queue_dir() {
+  echo "$TLR_LOCAL/qdir"
+}
+
+enrolls_add() {
+  local \
+	result_name="$1" \
+	tstamp=$(date +"%Y%m%d-%H%M%S") \
+	serial=0 \
+	remote="$REMOTE_ADDR" \
+	queue_dir=$(enrolls_queue_dir) \
+	key_types=$(enrolls_key_types) \
+	host= \
+	dir=
+  
+  if ! host=$(hosts_namechk "$FORM_host") ; then
+    echo "Invalid characters in hostname: $FORM_host"
+    exit 1
+  fi
+  echo ''
+  if hosts_exists "$host" ; then
+    echo "MSG: ******************************"
+    echo "MSG: WARNING, $host already exists!"
+    echo "MSG: ******************************"
+  fi
+
+  while [ -d "$queue_dir/$tstamp,$serial,$remote,$host.d" ] ; do
+    serial=$(expr $serial + 1)
+  done
+  dir="$queue_dir/$tstamp,$serial,$remote,$host.d"
+  mkdir -p "$dir"
+  cat > "$dir/metadata.cfg" <<-EOF
+	tstamp=$tstamp
+	remote=$REMOTE_ADDR
+	name=$host
+	serial=$serial
+	EOF
+  ssh-keygen -q -N '' -C 'provisional admin' -f "$dir/admin_key"
+  for type in $key_types
+  do
+    ssh-keygen -q -N '' -t $type -C "host:${type}@$host" -f "$dir/ssh_host_${type}_key"
+  done
+  eval $result_name=\"\$dir\"
+}
+
+_enrolls_field() {
+  case "$1" in
+  tstamp) echo 1;;
+  serial) echo 2;;
+  remote) echo 3;;
+  host) echo 4;;
+  count) echo 5;;
+  dup) echo 6;;
+  log) echo 7;;
+  *) echo 1-4;;
+  esac
+}
+
+enrolls_payload() {
+  local dir="$1"
+  ( cd "$dir" && find . -mindepth 1 -maxdepth 1 | cut -d/ -f2-| tr '\n' '\0') | xargs -0 tar -C "$dir" -zcf - | base64
+}
+
+
+enrolls_get() {
+  echo "$2" | cut -d, -f$(_enrolls_field "$1")
+}
+
+enrolls_list() {
+  find "$(enrolls_queue_dir)" -type d -maxdepth 1 -mindepth 1 | (
+    local cnt=0 d rhost status logs
+    while read d
+    do
+      cnt=$(expr $cnt + 1)
+      d=$(basename "$d" .d)
+      rhost=$(enrolls_get host "$d")
+      if host_exists "$rhost" ; then
+	status="true"
+      else
+	status="false"
+      fi
+      if [ -f $TLR_LOGS/enroll-$d ] ; then
+	logs=true
+      else
+	logs=false
+      fi
+      echo $d,p$cnt,$status,$logs
+    done
+  )
+  find "$TLR_LOGS" -type -f -maxdepth 1 -mindepth 1 -name 'enroll-*' | (
+    local queue_dir=$(enrolls_queue_dir) cnt=0
+    while read d
+    do
+      cnt=$(expr $cnt + 1)
+      d=$(basename "$d" | sed -e 's/^enroll-//')
+      [ -d "$queue_dir/$d.d" ] && continue # We already listed this one...
+      rhost=$(enrolls_get host "$d")
+      if host_exists "$rhost" ; then
+	status="true"
+      else
+	status="false"
+      fi
+      echo $d,d$cnt,$status,true
+    done
+  )
+}
+
+enrolls_del() {
+  local logs=: queue=:
+  while [ $# -gt 0 ]
+  do
+    case "$1" in
+    --logs) logs=: ;;
+    --no-logs) logs=false ;;
+    --queue) queue=: ;;
+    --no-queue) queue=false ;;
+    *) break;
+    esac
+    shift
+  done
+  local d queue_dir=$(enrolls_queue_dir)
+  for d in "$@"
+  do
+    if $logs ; then
+      rm -rf "$TLR_LOGS/enroll-$d"
+    fi
+    if $queue ; then
+      rm -rf "$queue_dir/$d.d"
+    fi
+  done
+}
+
+enrolls_this() {
+  local \
+	queue_dir=$(enrolls_queue_dir) \
+	vv="$1"
+
+  if [ ! -f "$queue_dir/$vv.d/metadata.cfg" ] ; then
+    echo "$(date +%Y-%m-%d+%H:%M:%S): Error enrolling $vv, missing metadata.cfg" 1>&2
+    return 1
+  fi
+  
+  local name remip
+  if ! name="$(hosts_namechk "$(echo "$vv" | cut -d, -f4)")" ; then
+    echo "$(date +%Y-%m-%d+%H:%M:%S): Invalid ENROLL name: $vv" 1>&2
+    return 1
+  fi
+
+  exec 2>&1
+  remip="$(echo "$vv" | cut -d, -f3)"
+  echo "ENROLLING \"$name\" ($remip)"
+
+  # - add keys to TLR_DATA/hosts.d
+  find "$queue_dir/$vv.d" -maxdepth 1 -mindepth 1 -type f -name "ssh_host_*.pub" -print0 \
+	| xargs -0 cat | hosts_add "$name"
+
+  # - apply local policy
+  apply_policies
+
+  # - rsync TLR_HOME to rhost and aply policies...
+  if [ "$name" = "$(hostname)" ] ; then
+    echo "Adding $name to itself..."
+  else
+    SH_IP_OVERRIDE="$remip" SSH_IDENTITY="$queue_dir/$vv.d/admin_key" $TLR_SCRIPTS/syncr -v "$name"
+    SSH_IP_OVERRIDE="$remip" SSH_IDENTITY="/etc/ssh/ssh_host_rsa_key" $TLR_SCRIPTS/syncr --rsh "$name" uptime
+  fi
+}
+
+
