@@ -84,7 +84,7 @@ add)
   if groups_add $newgid "$@" ; then
     apply_policies
   else
-    die $? "Error creating $newgroup"
+    die $? "Error creating $1"
   fi
   ;;
 del)

@@ -2,7 +2,7 @@
 #
 # General settings
 #
-master="ts1"
+master="<SERVER>"
 domain=the-kingdom
 
 #

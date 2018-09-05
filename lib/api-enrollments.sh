@@ -12,7 +12,8 @@ enrolls_queue_dir() {
 
 enrolls_add() {
   local \
-	result_name="$1" \
+	result_name="$1"
+	inp_host="$2" \
 	tstamp=$(date +"%Y%m%d-%H%M%S") \
 	serial=0 \
 	remote="$REMOTE_ADDR" \
@@ -21,11 +22,10 @@ enrolls_add() {
 	host= \
 	dir=
   
-  if ! host=$(hosts_namechk "$FORM_host") ; then
+  if ! host=$(hosts_namechk "$inp_host") ; then
     echo "Invalid characters in hostname: $FORM_host"
-    exit 1
+    return 1
   fi
-  echo ''
   if hosts_exists "$host" ; then
     echo "MSG: ******************************"
     echo "MSG: WARNING, $host already exists!"
@@ -49,6 +49,7 @@ enrolls_add() {
     ssh-keygen -q -N '' -t $type -C "host:${type}@$host" -f "$dir/ssh_host_${type}_key"
   done
   eval $result_name=\"\$dir\"
+  return 0
 }
 
 _enrolls_field() {
@@ -60,6 +61,7 @@ _enrolls_field() {
   count) echo 5;;
   dup) echo 6;;
   log) echo 7;;
+  id) echo 1-4;;
   *) echo 1-4;;
   esac
 }
@@ -82,7 +84,7 @@ enrolls_list() {
       cnt=$(expr $cnt + 1)
       d=$(basename "$d" .d)
       rhost=$(enrolls_get host "$d")
-      if host_exists "$rhost" ; then
+      if hosts_exists "$rhost" ; then
 	status="true"
       else
 	status="false"
@@ -95,7 +97,7 @@ enrolls_list() {
       echo $d,p$cnt,$status,$logs
     done
   )
-  find "$TLR_LOGS" -type -f -maxdepth 1 -mindepth 1 -name 'enroll-*' | (
+  find "$TLR_LOGS" -type f -maxdepth 1 -mindepth 1 -name 'enroll-*' | (
     local queue_dir=$(enrolls_queue_dir) cnt=0
     while read d
     do
@@ -103,7 +105,7 @@ enrolls_list() {
       d=$(basename "$d" | sed -e 's/^enroll-//')
       [ -d "$queue_dir/$d.d" ] && continue # We already listed this one...
       rhost=$(enrolls_get host "$d")
-      if host_exists "$rhost" ; then
+      if hosts_exists "$rhost" ; then
 	status="true"
       else
 	status="false"

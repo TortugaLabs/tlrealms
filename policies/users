@@ -35,8 +35,6 @@ if id $webuser >/dev/null 2>&1 ; then
   done
 fi
 
-role user_login
-
 if has_role user_login ; then
   #
   # Merge TL|Realm users with /etc/passwd files
@@ -77,7 +75,7 @@ if has_role user_login ; then
     ) > $shadow_tmp
     if [ $(wc -l < $shadow_tmp) -gt 5 ] ; then
       if ! cmp $shadow_tmp $etc_shadow ; then
-        cp - $etc_shadow ${etc_shadow}~
+        cp -av $etc_shadow ${etc_shadow}~
 	#cat $shadow_tmp > $etc_shadow
       fi
     fi
