@@ -26,8 +26,6 @@ if id $webuser >/dev/null 2>&1 ; then
 fi
 
 
-role user_login
-
 if has_role user_login ; then
   #
   # Merge TL|Realm users with /etc/group files
