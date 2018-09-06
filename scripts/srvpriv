@@ -35,7 +35,7 @@ op_enroll() {
       msg enrollment "PURGED!"
     else
       msg enrollment "Purging $vv"
-      echo '###' enrolls_del "$vv"
+      enrolls_del "$vv"
     fi
   elif [ -f "$queue_dir/$vv.d/metadata.cfg" ] ; then
     local name remip
