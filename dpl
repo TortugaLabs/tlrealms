@@ -91,6 +91,13 @@ payload_initdb() {
     /etc/tlr/scripts/groupmgr add admins
   fi
 }
+payload_ckdeps() {
+  local cmd
+  for cmd in python rsync haserl httpd
+  do
+    type $cmd >/dev/null 2>&1 || echo "Missing: $cmd"
+  done
+}
 
 #####################################################################
 
@@ -119,4 +126,6 @@ payload_initdb() {
   echo 'fi'
   
   rexec payload_server
+
+  rexec payload_ckdeps
 ) | ssh -T "$target"
