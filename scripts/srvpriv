@@ -9,7 +9,6 @@ require api-enrollments.sh
 
 cd /
 
-queue_dir="$TLR_LOCAL/qdir"
 srvpipe=$TLR_LOCAL/run/priv
 trap "rm -f $srvpipe" EXIT
 trap "rm -f $srvpipe ; exit" INT
@@ -20,9 +19,8 @@ if [ ! -p "$srvpipe" ] ; then
   chmod 422 "$srvpipe"
 fi
 
-msg() {
-  local log="$1" ; shift
-  echo "$(date +%Y-%m-%d+%H:%M:%S): $*" | tee -a "$TLR_LOGS/$log"
+notice() {
+  echo "$@" 1>&2
 }
 
 op_enroll() {
@@ -30,48 +28,21 @@ op_enroll() {
   
   if (echo "$vv" | grep -q "^purge ") then
     vv=$(echo "$vv" | sed -e 's/purge //');
-    if [ x"$vv" = x"enrollment" ] ; then
-      rm -f $TLR_LOGS/enrollment
-      msg enrollment "PURGED!"
-    else
-      msg enrollment "Purging $vv"
-      enrolls_del "$vv"
-    fi
-  elif [ -f "$queue_dir/$vv.d/metadata.cfg" ] ; then
-    local name remip
-    if ! name="$(hosts_namechk "$(echo "$vv" | cut -d, -f4)")" ; then
-      msg enrollment "Invalid ENROLL name: $vv"
-    else
-      msg enrollment "Enrolling $vv"
-      (
-	exec 2>&1
-	remip="$(echo "$vv" | cut -d, -f3)"
-	echo "ENROLLING \"$name\" ($remip)"
-	exit
-
-	# - add keys to TLR_DATA/hosts.d
-	find "$queue_dir/$vv.d" -maxdepth 1 -mindepth 1 -type f -name "ssh_host_*.pub" -print0 \
-	  | xargs -0 cat | hosts_add "$name"
-
-	# - apply local policy
-	apply_policies
-
-	# - rsync TLR_HOME to rhost and aply policies...
-	if [ "$name" = "$(hostname)" ] ; then
-	  echo "Adding $name to itself..."
-	else
-	  SSH_IP_OVERRIDE="$remip" SSH_IDENTITY="$queue_dir/$vv.d/admin_key" $TLR_SCRIPTS/syncr -v "$name"
-	  SSH_IP_OVERRIDE="$remip" SSH_IDENTITY="/etc/ssh/ssh_host_rsa_key" $TLR_SCRIPTS/syncr --rsh "$name" uptime
-	fi
-      ) | (
-	while read ln
-	do
-	  msg "enroll-$vv" "$ln"
-	done
-      )
-    fi
+    notice "enroll:purging $vv"
+    enrolls_del "$vv"
+  elif enrolls_exists "$vv" ; then
+    notice "enroll:enrolling $vv..."
+    (
+      enrolls_this "$vv"
+    ) | (
+      exec >>"$TLR_LOGS/enroll-$vv" 2>&1
+      while read ln
+      do
+	echo "$(date +%Y-%m-%d+%H:%M:%S): $ln"
+      done
+    )
   else
-    msg enrollment "Invalid ENROLL request: \"$vv\""
+    notice "enroll:Invalid request \"$vv\""
   fi
 }
 
@@ -91,12 +62,12 @@ op_sync() {
   ) | (
     while read ln
     do
-      msg "sync" "$ln"
+      notice "sync:$ln"
     done
   )
 }
 
-msg srvpriv "Starting ($$)..."
+notice "srvpriv:Starting ($$)..."
 
 while : ; do
   (while read op args ; do
@@ -106,16 +77,16 @@ while : ; do
       ;;
     enroll)
       # Enroll stuff
-      echo "ENROLL: \"$args\""
+      notice "ENROLL: \"$args\""
       op_enroll "$args"
       ;;
     sync)
       op_sync "$args"
       ;;
     *)
-      echo "op=$op args=$args"
+      notice "op=$op args=$args"
     esac
   done; exit 0) < $srvpipe || break
 done
 
-msg srvpriv "exiting ($$)"
+notice "srvpriv:exiting ($$)"

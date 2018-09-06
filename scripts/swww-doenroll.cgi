@@ -7,37 +7,26 @@ require urlencode.sh
 require refs.sh
 require api-hosts.sh
 require api-enrollments.sh
-
 %>
 <html>
 <head>
  <title>TL|Realm Enrollment Approval</title>
 </head>
 <body>
-<p><a href="/">HOME</a> <a href="<%= $SCRIPT_NAME %>">Q</a> <a href="<%= $SCRIPT_NAME %>/enrollment">Logs</a></p>
+<p><a href="/">HOME</a> <a href="<%= $SCRIPT_NAME %>">Q</a></p>
 <hr/>
 <h1>TL|Realm Enrollment Approval</h1>
 <%
-queue_dir="$TLR_LOCAL/qdir"
 srvpipe=$TLR_LOCAL/run/priv
 
 if [ ! -p "$srvpipe" ] ; then
   echo "<strong>Server daemon not running!</strong>"
-elif [ -n "${PATH_INFO:-}" ] ; then
+  srvpipe=''
+fi
+if [ -n "${PATH_INFO:-}" ] ; then
   case "$PATH_INFO" in
   */../*)
     echo "Invalid PATH_INFO: $PATH_INFO"
-    ;;
-  /enrollment)
-    if [ -f "$TLR_LOGS$PATH_INFO" ] ; then
-      echo "<a href=\"$SCRIPT_NAME/purge$PATH_INFO\">PURGE</a>"
-      echo "<pre>"
-      cat "$logfile"
-      echo "</pre>"
-      echo "<a href=\"$SCRIPT_NAME/purge$PATH_INFO\">PURGE</a>"
-    else
-      echo "No data"
-    fi
     ;;
   /enroll/*)
     vv=$(basename "$PATH_INFO")
@@ -52,38 +41,40 @@ elif [ -n "${PATH_INFO:-}" ] ; then
       echo "Log $logfile not found"
     fi
     ;;
-  /purge/enrollment)
-    echo "Purging... $PATH_INFO"
-    echo "enroll purge enrollment" > $srvpipe
-    ;;
   /purge/enroll*)
-    vv=$(echo "$PATH_INFO" | sed -e 's!^/purge/enroll-!!')
-    echo "Purging... $PATH_INFO"
-    echo "<pre>enroll purge $vv</pre>"
-    echo "enroll purge $vv" > $srvpipe
+    if [ -n "$srvpipe" ] ; then
+      vv=$(echo "$PATH_INFO" | sed -e 's!^/purge/enroll-!!')
+      echo "Purging... $PATH_INFO"
+      echo "<pre>enroll purge $vv</pre>"
+      echo "enroll purge $vv" > $srvpipe
+    fi
     ;;
   *)
     echo "PATH_INFO Error: $PATH_INFO"
     ;;
   esac
 elif [ -n "${FORM_cmd_app:-}" ] ; then
-  (for i in $(seq 1 $FORM_max)
-  do
-    if [ -n "$(get FORM_c$i)" ] ; then
-      v=$(urldecode "$(get "FORM_c$i")")
-      echo "<p>ENROLL: $v</p>"
-      echo enroll "$v" 1>&3
-    fi
-  done) 3> $srvpipe
+  if [ -n "$srvpipe" ] ; then
+    (for i in $(seq 1 $FORM_max)
+    do
+      if [ -n "$(get FORM_c$i)" ] ; then
+	v=$(urldecode "$(get "FORM_c$i")")
+	echo "<p>ENROLL: $v</p>"
+	echo enroll "$v" 1>&3
+      fi
+    done) 3> $srvpipe
+  fi
 elif [ -n "${FORM_cmd_del:-}" ] ; then
-  for i in $(seq 1 $FORM_max)
-  do
-    if [ -n "$(get FORM_c$i)" ] ; then
-      v=$(urldecode "$(get "FORM_c$i")")
-      echo "<p>Delete: $v</p>"
-      echo "enroll purge $v" > $srvpipe
-    fi
-  done
+  if [ -n "$srvpipe" ] ; then
+    for i in $(seq 1 $FORM_max)
+    do
+      if [ -n "$(get FORM_c$i)" ] ; then
+	v=$(urldecode "$(get "FORM_c$i")")
+	echo "<p>Delete: $v</p>"
+	echo "enroll purge $v" > $srvpipe
+      fi
+    done
+  fi
 else
 %>
 <form method="post">
@@ -118,8 +109,6 @@ else
   <input type="submit" name="cmd_del" value=" Delete "/>
   <input type="reset" /></td></tr>
 </form>
-
-  
 <pre>
 <% enrolls_list %>
 </pre>

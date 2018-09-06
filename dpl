@@ -90,6 +90,7 @@ payload_initdb() {
   if [ -z "$(/etc/tlr/scripts/groupmgr list admins)" ] ; then
     /etc/tlr/scripts/groupmgr add admins
   fi
+  [ ! -f /etc/tlr/data/root_keys ] && >/etc/tlr/data/root_keys || :
 }
 payload_ckdeps() {
   local cmd

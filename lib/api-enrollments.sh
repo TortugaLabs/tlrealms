@@ -75,6 +75,13 @@ enrolls_get() {
   echo "$2" | cut -d, -f$(_enrolls_field "$1")
 }
 
+enrolls_exists() {
+  if [ -f "$(enrolls_queue_dir)/$1.d/metadata.cfg" ] ; then
+    return 0
+  fi
+  return 1
+}
+
 enrolls_list() {
   find "$(enrolls_queue_dir)" -type d -maxdepth 1 -mindepth 1 | (
     local d rhost status logs
@@ -143,13 +150,13 @@ enrolls_this() {
 	vv="$1"
 
   if [ ! -f "$queue_dir/$vv.d/metadata.cfg" ] ; then
-    echo "$(date +%Y-%m-%d+%H:%M:%S): Error enrolling $vv, missing metadata.cfg" 1>&2
+    echo "Error enrolling $vv, missing metadata.cfg" 1>&2
     return 1
   fi
   
   local name remip
   if ! name="$(hosts_namechk "$(echo "$vv" | cut -d, -f4)")" ; then
-    echo "$(date +%Y-%m-%d+%H:%M:%S): Invalid ENROLL name: $vv" 1>&2
+    echo "Invalid ENROLL name: $vv" 1>&2
     return 1
   fi
 
