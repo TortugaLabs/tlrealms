@@ -5,6 +5,7 @@
 #
 require api-serial.sh
 require api-hosts.sh
+require api-enrollments.sh
 
 cd /
 
@@ -34,16 +35,7 @@ op_enroll() {
       msg enrollment "PURGED!"
     else
       msg enrollment "Purging $vv"
-      if [ -d "$queue_dir/$vv.d" ] ; then
-        rm -rf "$queue_dir/$vv.d"
-      else
-	msg enrollment "Missing Queue Entry $vv"
-      fi
-      if [ -f "$TLR_LOGS/enroll-$vv" ] ; then
-        rm -f "$TLR_LOGS/enroll-$vv"
-      else
-	msg enrollment "Missing LOG entry $vv"
-      fi
+      echo '###' enrolls_del "$vv"
     fi
   elif [ -f "$queue_dir/$vv.d/metadata.cfg" ] ; then
     local name remip
@@ -55,6 +47,7 @@ op_enroll() {
 	exec 2>&1
 	remip="$(echo "$vv" | cut -d, -f3)"
 	echo "ENROLLING \"$name\" ($remip)"
+	exit
 
 	# - add keys to TLR_DATA/hosts.d
 	find "$queue_dir/$vv.d" -maxdepth 1 -mindepth 1 -type f -name "ssh_host_*.pub" -print0 \
@@ -113,7 +106,7 @@ while : ; do
       ;;
     enroll)
       # Enroll stuff
-      #~ echo "ENROLL: \"$args\""
+      echo "ENROLL: \"$args\""
       op_enroll "$args"
       ;;
     sync)

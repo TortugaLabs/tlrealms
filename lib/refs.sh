@@ -48,5 +48,5 @@ get() {
 ## `get` will display the value of the provided varname.  Unlike direct
 ## references with `$`, the varname can be itself a variable containing
 ## the actual variable to be referenced.
-  eval echo \"\$$1\"
+  eval echo \"\$$1\" || :
 }

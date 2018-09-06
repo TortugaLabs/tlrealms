@@ -6,6 +6,15 @@ set -euf -o pipefail
 [ -z "${TLR_SERVER:-}" ] && TLR_SERVER='<TLR_SERVER>'
 run="echo -- "
 
+rc=false
+for cmd in rsync
+do
+  if ! type $cmd ; then
+    rc=true
+  fi
+done
+$rc && exit 1
+
 #include ../lib/urlencode.sh
 
 

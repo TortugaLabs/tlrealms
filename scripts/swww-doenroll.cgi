@@ -6,6 +6,7 @@ Content-type: text/html
 require urlencode.sh
 require refs.sh
 require api-hosts.sh
+require api-enrollments.sh
 
 %>
 <html>
@@ -13,7 +14,7 @@ require api-hosts.sh
  <title>TL|Realm Enrollment Approval</title>
 </head>
 <body>
-<p><a href="/">HOME</a> <a href="<%= $SCRIPT_NAME %>">Q</a> <a href="<%= $SCRIPT_NAME %>/logs">Logs</a></p>
+<p><a href="/">HOME</a> <a href="<%= $SCRIPT_NAME %>">Q</a> <a href="<%= $SCRIPT_NAME %>/enrollment">Logs</a></p>
 <hr/>
 <h1>TL|Realm Enrollment Approval</h1>
 <%
@@ -27,6 +28,30 @@ elif [ -n "${PATH_INFO:-}" ] ; then
   */../*)
     echo "Invalid PATH_INFO: $PATH_INFO"
     ;;
+  /enrollment)
+    if [ -f "$TLR_LOGS$PATH_INFO" ] ; then
+      echo "<a href=\"$SCRIPT_NAME/purge$PATH_INFO\">PURGE</a>"
+      echo "<pre>"
+      cat "$logfile"
+      echo "</pre>"
+      echo "<a href=\"$SCRIPT_NAME/purge$PATH_INFO\">PURGE</a>"
+    else
+      echo "No data"
+    fi
+    ;;
+  /enroll/*)
+    vv=$(basename "$PATH_INFO")
+    logfile="$TLR_LOGS/enroll-$vv"    
+    if [ -f "$logfile" ] ; then
+      echo "<a href=\"$SCRIPT_NAME/purge/enroll-$vv\">PURGE</a>"
+      echo "<pre>"
+      cat "$logfile"
+      echo "</pre>"
+      echo "<a href=\"$SCRIPT_NAME/purge/enroll-$vv\">PURGE</a>"
+    else
+      echo "Log $logfile not found"
+    fi
+    ;;
   /purge/enrollment)
     echo "Purging... $PATH_INFO"
     echo "enroll purge enrollment" > $srvpipe
@@ -36,25 +61,6 @@ elif [ -n "${PATH_INFO:-}" ] ; then
     echo "Purging... $PATH_INFO"
     echo "<pre>enroll purge $vv</pre>"
     echo "enroll purge $vv" > $srvpipe
-    ;;
-  /enroll*)
-    if [ -f "$TLR_LOGS$PATH_INFO" ] ; then
-      echo "<a href=\"$SCRIPT_NAME/purge$PATH_INFO\">PURGE</a>"
-      echo "<pre>"
-      cat "$TLR_LOGS$PATH_INFO"
-      echo "</pre>"
-      echo "<a href=\"$SCRIPT_NAME/purge$PATH_INFO\">PURGE</a>"
-    else
-      echo "Log $PATH_INFO not found"
-    fi
-    ;;
-  /logs)
-    echo '<ul>'
-    ls -1t "$TLR_LOGS" | grep '^enroll' | while read log
-    do
-      echo "<li><a href=\"$SCRIPT_NAME/$log\">$log</a></li>"
-    done
-    echo '</ul>'
     ;;
   *)
     echo "PATH_INFO Error: $PATH_INFO"
@@ -75,47 +81,48 @@ elif [ -n "${FORM_cmd_del:-}" ] ; then
     if [ -n "$(get FORM_c$i)" ] ; then
       v=$(urldecode "$(get "FORM_c$i")")
       echo "<p>Delete: $v</p>"
-      echo "<pre>"
-      rm -rf "$queue_dir/$v.d" 2>&1
-      echo "</pre>"
+      echo "enroll purge $v" > $srvpipe
     fi
   done
 else
 %>
 <form method="post">
   <table border=1>
-  <tr><th>Timestamp</th><th>IP addr</th><th>Host</th><th>Status</th></td>
+  <tr><th>&nbsp;</th><th>Timestamp</th><th>IP addr</th><th>Host</th><th>Status</th><th>Logs</th></tr>
   <%
-  find $queue_dir -type d -maxdepth 1 -mindepth 1 | (
     cnt=0
-    while read d
+    for row in $(enrolls_list)
     do
       cnt=$(expr $cnt + 1)
       echo "<tr>"
-      d=$(basename "$d" .d)
-      echo "<td>"
-        echo "<input type='checkbox' name='c$cnt' value='$(urlencode "$d")'/>"
-        echo "$d" | cut -d, -f1-2 
-      echo "</td>"
-      echo "<td>" ; echo "$d" | cut -d, -f3 ; echo "</td>"
-      rhost=$(echo "$d" | cut -d, -f4)
-      echo "<td>($rhost)</td>"
-      if hosts_exists "$rhost" ; then
+      echo "<td><input type=\"checkbox\" name=\"c$cnt\" value=\"$(urlencode "$(enrolls_get id "$row")")\" /></td>"
+      echo "<td>$(enrolls_get tstamp "$row") $(enrolls_get serial "$row")</td>"
+      echo "<td>$(enrolls_get remote "$row")</td>"
+      echo "<td>$(enrolls_get host "$row")</td>"
+      if $(enrolls_get dup "$row") ; then
 	echo "<td bgcolor='red'>DUP!</td>"
       else
 	echo "<td bgcolor='green'>OK</td>"
       fi
-
+      if $(enrolls_get log "$row") ; then
+	echo "<td><a href=\"$SCRIPT_NAME/enroll/$(enrolls_get id "$row")\">View</a></td>"
+      else
+	echo "<td>&nbsp;</td>"
+      fi
       echo "</tr>"
     done
     echo "<input type='hidden' name='max' value='$cnt' />"
-  )
   %>
   </table>
   <input type="submit" name="cmd_app" value=" Approve "/>
   <input type="submit" name="cmd_del" value=" Delete "/>
   <input type="reset" /></td></tr>
 </form>
+
+  
+<pre>
+<% enrolls_list %>
+</pre>
 <% fi %>
 </body>
 </html>

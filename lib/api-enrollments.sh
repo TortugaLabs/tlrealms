@@ -58,11 +58,10 @@ _enrolls_field() {
   serial) echo 2;;
   remote) echo 3;;
   host) echo 4;;
-  count) echo 5;;
-  dup) echo 6;;
-  log) echo 7;;
+  dup) echo 5;;
+  log) echo 6;;
   id) echo 1-4;;
-  *) echo 1-4;;
+  *) echo 1-;;
   esac
 }
 
@@ -78,10 +77,9 @@ enrolls_get() {
 
 enrolls_list() {
   find "$(enrolls_queue_dir)" -type d -maxdepth 1 -mindepth 1 | (
-    local cnt=0 d rhost status logs
+    local d rhost status logs
     while read d
     do
-      cnt=$(expr $cnt + 1)
       d=$(basename "$d" .d)
       rhost=$(enrolls_get host "$d")
       if hosts_exists "$rhost" ; then
@@ -94,14 +92,13 @@ enrolls_list() {
       else
 	logs=false
       fi
-      echo $d,p$cnt,$status,$logs
+      echo $d,$status,$logs
     done
   )
   find "$TLR_LOGS" -type f -maxdepth 1 -mindepth 1 -name 'enroll-*' | (
     local queue_dir=$(enrolls_queue_dir) cnt=0
     while read d
     do
-      cnt=$(expr $cnt + 1)
       d=$(basename "$d" | sed -e 's/^enroll-//')
       [ -d "$queue_dir/$d.d" ] && continue # We already listed this one...
       rhost=$(enrolls_get host "$d")
@@ -110,7 +107,7 @@ enrolls_list() {
       else
 	status="false"
       fi
-      echo $d,d$cnt,$status,true
+      echo $d,$status,true
     done
   )
 }
