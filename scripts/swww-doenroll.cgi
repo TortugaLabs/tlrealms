@@ -109,9 +109,6 @@ else
   <input type="submit" name="cmd_del" value=" Delete "/>
   <input type="reset" /></td></tr>
 </form>
-<pre>
-<% enrolls_list %>
-</pre>
 <% fi %>
 </body>
 </html>
