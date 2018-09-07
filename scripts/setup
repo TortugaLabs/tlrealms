@@ -11,6 +11,9 @@ require fixfile.sh
 require api-users.sh
 
 setup_www() {
+  if [ $# -eq 0 ] ; then
+    set - digest /var/www/localhost/htdocs
+  fi
   local mode="$1" wwwdir="$2"
   
   mkdir -p $wwwdir/tlr $wwwdir/tlrsec
