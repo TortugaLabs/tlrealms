@@ -145,6 +145,15 @@ enrolls_del() {
 }
 
 enrolls_this() {
+  local clobber=false
+  while [ $# -gt 0 ] ; do
+    case "$1" in
+    --clobber|-f) clobber=true ;;
+    --no-clobber|-i) clobber=false ;;
+    *) break ;;
+    esac
+    shift
+  done
   local \
 	queue_dir=$(enrolls_queue_dir) \
 	vv="$1"
@@ -160,9 +169,15 @@ enrolls_this() {
     return 1
   fi
 
-  exec 2>&1
+  if hosts_exists "$name" ; then
+    if ! $clobber ; then
+      echo "Host \"$name\" already exists!" 1>&2
+      return 1
+    fi
+  fi
+
   remip="$(echo "$vv" | cut -d, -f3)"
-  echo "ENROLLING \"$name\" ($remip)"
+  echo "ENROLLING \"$name\" ($remip)" 1>&2
 
   # - add keys to TLR_DATA/hosts.d
   find "$queue_dir/$vv.d" -maxdepth 1 -mindepth 1 -type f -name "ssh_host_*.pub" -print0 \

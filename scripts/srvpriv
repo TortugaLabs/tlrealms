@@ -33,6 +33,7 @@ op_enroll() {
   elif enrolls_exists "$vv" ; then
     notice "enroll:enrolling $vv..."
     (
+      exec 2>&1
       enrolls_this "$vv"
     ) | (
       exec >>"$TLR_LOGS/enroll-$vv" 2>&1

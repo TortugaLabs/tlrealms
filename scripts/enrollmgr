@@ -4,6 +4,7 @@
 # Enrollment manager 
 #
 require api-enrollments.sh
+require shescape.sh
 
 [ $# -eq 0 ] && die 10 "$0: op [args]"
 
@@ -42,9 +43,18 @@ purge)
   enrolls_del "$@"
   ;;
 approve)
+  opts=""
+  while [ $# -gt 0 ] ; do
+    if [ x"${1:0:1}" = x"-" ] ;then
+      opts="$opts $(shell_escape "$1")"
+      shift
+    else
+      break
+    fi
+  done
   for vv in "$@"
   do
-    ( enrolls_this "$vv" )
+    ( enrolls_this $opts "$vv" )
   done
   ;;
 info)
