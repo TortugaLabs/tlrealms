@@ -1,0 +1,67 @@
+#!/bin/sh
+#
+# Run command saving logs
+#
+set -euf -o pipefail
+
+logfile=""
+pidfile=""
+savestderr=true
+
+if [ $# -gt 0 ] ; then
+  if [ x"$1" = x"-b" ] ; then
+    shift;
+    setsid "$0" "$@" 1>&- 2>&- 0<&- &
+    exit $?
+  fi
+fi
+
+while [ $# -gt 0 ]
+do
+  case "$1" in
+  --log=*)
+    logfile=${1#--log=}
+    ;;
+  --pid=*)
+    pidfile=${1#--pid=}
+    ;;
+  --no-stderr)
+    savestderr=false
+    ;;
+  *)
+    break
+  esac
+  shift
+done
+
+if [ $# -eq 0 ] ; then
+  echo "Usage: $0 [--log=file] [--pid=file] <cmd> _[... opts ...]_" 1>&2
+  exit 1
+fi
+
+runcmd() {
+  if [ -n "$pidfile" ] ; then
+    sh -c 'echo $PPID' > "$pidfile"
+  fi
+  $savestderr && exec 2>&1 || :
+  exec "$@" 
+}
+save_logs() {
+  exec 1>&- 2>&-
+  if [ x"${logfile:0:1}" = x"|" ] ; then
+    exec ${logfile:1}
+  else
+    while read ln
+    do
+      echo "$(date '+%Y-%m-%d %H:%M:%S'): $ln" >> "$logfile"
+    done
+  fi
+}
+
+if [ -n "$logfile" ] ; then
+ (runcmd "$@")|save_logs "$logfile"
+else
+  runcmd "$@"
+fi
+
+

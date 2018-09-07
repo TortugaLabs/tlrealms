@@ -94,6 +94,19 @@ setup_demo() {
   fi
 }
 
+setup_init() {
+  # install init scripts...
+  if type rc-service ; then
+    fixfile --mode=755 /etc/init.d/srvpriv < $TLR_LIB/srvpriv.openrc.sh
+    rc-update add srvpriv
+  else
+    echo "***"
+    echo "*** Unknown init system"
+    echo "***"
+  fi
+
+}
+
 op="$1" ; shift
 
 
@@ -103,6 +116,9 @@ www)
   ;;
 demo)
   setup_demo "$@"
+  ;;
+init)
+  setup_init "$@"
   ;;
 help)
   cat <<-EOF

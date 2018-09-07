@@ -10,8 +10,18 @@ require api-enrollments.sh
 cd /
 
 srvpipe=$TLR_LOCAL/run/priv
-trap "rm -f $srvpipe" EXIT
-trap "rm -f $srvpipe ; exit" INT
+
+cleanup_process() {
+  notice "Caught $1: Clean up"
+  echo quit > "$srvpipe"
+  rm -f "$srvpipe"
+  exit
+}
+for j in EXIT INT TERM
+do
+  trap "cleanup_process $j" EXIT
+done
+
 
 if [ ! -p "$srvpipe" ] ; then
   rm -f "$srvpipe"
