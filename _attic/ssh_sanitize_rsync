@@ -1,0 +1,38 @@
+#!/bin/sh
+sanitize_rsync() {
+  local cmd="$1" ; shift
+  [ x"$cmd" != x"rsync" ] && die "$cmd: Unknown command"
+
+  # echo "- $*" 1>&2
+
+  local i server=false sender=false
+  for i in "$@"
+  do
+    case "$i" in
+      --server)
+	server=true
+	;;
+      --sender)
+	sender=true
+	;;
+      -*)
+	continue
+	;;
+      
+      /*|*/../*)
+	die 3  "$i: Forbidden path"
+	;;
+    esac
+  done
+
+  if ! ( $server && $sender ) ; then
+    die 4 "rsync: Not allowed"
+  fi
+
+  # Identify files owned by root
+  (
+    echo '#user'  $(find data -mindepth 1 -user $(id -u))
+    echo '#group' $(find data -mindepth 1 -group $(id -g))
+  ) > data/_attr.txt
+  exec "$cmd" "$@"
+}
