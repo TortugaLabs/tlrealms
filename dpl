@@ -90,7 +90,15 @@ payload_initdb() {
   if [ -z "$(/etc/tlr/scripts/groupmgr list admins)" ] ; then
     /etc/tlr/scripts/groupmgr add admins
   fi
-  [ ! -f /etc/tlr/data/root_keys ] && >/etc/tlr/data/root_keys || :
+  if [ ! -f /etc/tlr/data/root_keys ] ; then
+    if [ -f $HOME/.ssh/authorized_keys ] ; then
+      cp $HOME/.ssh/authorized_keys /etc/tlr/data/root_keys
+    elif [ -f /etc/ssh/userkeys/root/authorized_keys ] ; then
+      cp /etc/ssh/userkeys/root/authorized_keys /etc/tlr/data/root_keys
+    else
+      > /etc/tlr/data/root_keys
+    fi
+  fi
 }
 payload_ckdeps() {
   local cmd
