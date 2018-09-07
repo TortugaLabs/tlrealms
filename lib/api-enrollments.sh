@@ -185,12 +185,18 @@ enrolls_this() {
 
   # - apply local policy
   apply_policies
+  # Make sure we don't have it in known_hosts
+  local known_hosts=$HOME/.ssh/known_hosts
+  if [ -f "$known_hosts" ] ; then
+    ssh-keygen -R "$remip" -f "$known_hosts"
+    ssh-keygen -R "$name" -f "$known_hosts"
+  fi
 
   # - rsync TLR_HOME to rhost and aply policies...
   if [ "$name" = "$(hostname)" ] ; then
     echo "Adding $name to itself..."
   else
-    SH_IP_OVERRIDE="$remip" SSH_IDENTITY="$queue_dir/$vv.d/admin_key" $TLR_SCRIPTS/syncr -v "$name"
+    SSH_IP_OVERRIDE="$remip" SSH_IDENTITY="$queue_dir/$vv.d/admin_key" $TLR_SCRIPTS/syncr -v "$name"
     SSH_IP_OVERRIDE="$remip" SSH_IDENTITY="/etc/ssh/ssh_host_rsa_key" $TLR_SCRIPTS/syncr --rsh "$name" uptime
   fi
 }
