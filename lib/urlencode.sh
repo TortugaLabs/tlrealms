@@ -16,6 +16,9 @@ urlencode() {
 }
 
 urldecode() {
-  local data=${1//+/ }
-  printf '%b' "${data//%/\x}"
+  #~ : "${*//+/ }"
+  #~ echo -e "${_//%/\\x}"
+  echo -ne $(echo -n "$1" | sed -E "s/%/\\\\x/g")
+  #~ local data=${1//+/ }
+  #~ printf '%b' "${data//%/\x}"
 }
