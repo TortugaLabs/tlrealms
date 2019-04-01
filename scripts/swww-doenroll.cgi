@@ -57,7 +57,7 @@ elif [ -n "${FORM_cmd_app:-}" ] ; then
   if [ -n "$srvpipe" ] ; then
     (for i in $(seq 1 $FORM_max)
     do
-      if [ -n "$(get FORM_c$i)" ] ; then
+      if [ -n "$(get FORM_c$i 2>&-)" ] ; then
 	v=$(urldecode "$(get "FORM_c$i")")
 	echo "<p>ENROLL: $v</p>"
 	echo enroll "$v" 1>&3
@@ -68,7 +68,7 @@ elif [ -n "${FORM_cmd_del:-}" ] ; then
   if [ -n "$srvpipe" ] ; then
     for i in $(seq 1 $FORM_max)
     do
-      if [ -n "$(get FORM_c$i)" ] ; then
+      if [ -n "$(get FORM_c$i 2>&-)" ] ; then
 	v=$(urldecode "$(get "FORM_c$i")")
 	echo "<p>Delete: $v</p>"
 	echo "enroll purge $v" > $srvpipe
