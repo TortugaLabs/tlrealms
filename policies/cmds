@@ -6,5 +6,5 @@
 
 for cmd in hostmgr groupmgr usermgr enrollmgr
 do
-  [ -x $TLR_SCRIPTS/$cmd ] && ln -sf $TLR_SCRIPTS/$cmd /usr/bin/$cmd
+  [ -x $TLR_SCRIPTS/$cmd ] && ln -sf $TLR_SCRIPTS/$cmd /usr/local/bin/$cmd
 done
