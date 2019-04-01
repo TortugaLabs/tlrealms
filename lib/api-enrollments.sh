@@ -173,6 +173,8 @@ enrolls_this() {
     if ! $clobber ; then
       echo "Host \"$name\" already exists!" 1>&2
       return 1
+    else
+      echo "Overwriting \"$name\"" 1>&2
     fi
   fi
 
