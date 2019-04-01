@@ -97,7 +97,8 @@ setup_demo() {
 setup_init() {
   # install init scripts...
   if type rc-service ; then
-    fixfile --mode=755 /etc/init.d/srvpriv < $TLR_LIB/srvpriv.openrc.sh
+    rm -f /etc/init.d/srvpriv
+    ln -s $TLR_LIB/init.d-openrc/srvpriv /etc/init.d/srvpriv
     rc-update add srvpriv
   else
     echo "***"
@@ -125,6 +126,7 @@ help)
 	Sub-commands:
 	- $0 www : setup web server
 	- $0 demo : setup demo users
+	- $0 init : configure initd scripts
 	EOF
   ;;
 *)
