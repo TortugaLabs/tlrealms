@@ -17,7 +17,7 @@ BEGIN {
 }
 
 {
-  if ((length(min) == 0 || $3 < min)&&(length(max)==0 || $3 > max)) {
+  if ((length(min) == 0 && length(max) == 0) || (length(min) > 0 && $3 < min) || (length(max) > 0 && $3 > max)) {
     if (length(dbshadow[$1]) > 0) print dbshadow[$1];
-  }
+  }  
 }

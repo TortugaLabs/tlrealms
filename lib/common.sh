@@ -33,7 +33,7 @@ role() {
   done
 }
 add_role() {
-  if ( echo "$*" | grep -q : ) ; then
+  if ! ( echo "$*" | grep -q : ) ; then
     # Only one host specified...
     if [ "$(hostname)" = "$1" ] ; then
       shift
@@ -56,6 +56,18 @@ add_role() {
       role "$@"
     fi
   fi
+}
+add_host() {
+  local myrole="$1" ; shift
+
+  while [ $# -gt 0 ]
+  do
+    if [ "$1" = "$(hostname)" ] ; then
+      role "$myrole"
+      return
+    fi
+    shift
+  done
 }
 has_role() {
   local role

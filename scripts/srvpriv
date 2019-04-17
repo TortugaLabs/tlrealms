@@ -25,6 +25,7 @@ done
 
 if [ ! -p "$srvpipe" ] ; then
   rm -f "$srvpipe"
+  mkdir -p "$(dirname "$srvpipe")"
   mkfifo "$srvpipe"
   chmod 422 "$srvpipe"
 fi

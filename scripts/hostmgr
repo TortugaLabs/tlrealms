@@ -43,7 +43,7 @@ add)
   ;;
 sync)
   if ! is_master ; then
-    wget -O- "http://$(get_masters|awk '{print $1}')/tlr/sync.cgi/$(hostname)?s=$(serial_get)"
+    wget -O- "http://$(get_master|awk '{print $1}')/tlr/sync.cgi/$(hostname)?s=$(serial_get)"
     exit $?
   fi
   [ $# -eq 0 ] && die 30 "Usage: $0 sync [--all] <host> ..."

@@ -35,56 +35,56 @@ if id $webuser >/dev/null 2>&1 ; then
   done
 fi
 
-if has_role user_login ; then
-  #
-  # Merge TL|Realm users with /etc/passwd files
-  #
-  for g1 in passwd shadow
-  do
-    [ -f $TLR_LOCAL/$g1.g1 ] && continue
-    cp -a /etc/$g1 $TLR_LOCAL/$g1.g1
-  done
+#
+# Merge TL|Realm users with /etc/passwd files
+#
+for g1 in passwd shadow
+do
+  [ -f $TLR_LOCAL/$g1.g1 ] && continue
+  cp -a /etc/$g1 $TLR_LOCAL/$g1.g1
+done
   
-  if [ ${GID_MIN:=11000} -lt ${UID_MIN:=2000} ] ; then
-    min_id=$GID_MIN
-  else
-    min_id=$UID_MIN
-  fi
-  max_id=${XID_MAX:-65500}
+if [ ${GID_MIN:=11000} -lt ${UID_MIN:=2000} ] ; then
+  min_id=$GID_MIN
+else
+  min_id=$UID_MIN
+fi
+max_id=${XID_MAX:-65500}
   
-  etc_passwd=/etc/passwd ; passwd_tmp=$TLR_LOCAL/passwd.tmp
-  if depcheck $etc_passwd $0 $passwd_txt ; then
-    (
-      awk -vFS=":" '$3 < '$min_id' || $3 > '$max_id $etc_passwd | sort -t : -k 3 -n
-      cat $passwd_txt
-    ) > $passwd_tmp
-    if [ $(wc -l < $passwd_tmp) -gt 5 ] ; then
-      if ! cmp $passwd_tmp $etc_passwd ; then
-	cp -a $etc_passwd ${etc_passwd}~
-	#cat $passwd_tmp > $etc_passwd
-      else
-	: touch $etc_passwd
-      fi
+etc_passwd=/etc/passwd ; passwd_tmp=$TLR_LOCAL/passwd.tmp
+if depcheck $etc_passwd $0 $passwd_txt ; then
+  (
+    awk -vFS=":" '$3 < '$min_id' || $3 > '$max_id $etc_passwd | sort -t : -k 3 -n
+    cat $passwd_txt
+  ) > $passwd_tmp
+fi
+etc_shadow=/etc/shadow ; shadow_tmp=$TLR_LOCAL/shadow.tmp
+if depcheck $etc_shadow $0 $shadow_txt ; then
+  (
+    awk -f $TLR_LIB/pwfix.awk -vshadow=$etc_shadow -vmin=$min_id -vmax=$max_id $etc_passwd
+    cat $shadow_txt
+  ) > $shadow_tmp
+fi
+
+if has_role users users_login ; then
+  if [ $(wc -l < $passwd_tmp) -gt 5 ] ; then
+    if ! cmp $passwd_tmp $etc_passwd ; then
+      cp -a $etc_passwd ${etc_passwd}~
+      cat $passwd_tmp > $etc_passwd
+    else
+      : touch $etc_passwd
     fi
   fi
-  etc_shadow=/etc/shadow ; shadow_tmp=$TLR_LOCAL/shadow.tmp
-  if depcheck $etc_shadow $0 $shadow_txt ; then
-    (
-      awk -f $TLR_LIB/pwfix.awk -vshadow=$etc_shadow -vmin=$min_id -vmax=$max_id $passwd_txt
-      cat $shadow_txt
-    ) > $shadow_tmp
+  if has_role user_login ; then
     if [ $(wc -l < $shadow_tmp) -gt 5 ] ; then
       if ! cmp $shadow_tmp $etc_shadow ; then
-        cp -av $etc_shadow ${etc_shadow}~
-	#cat $shadow_tmp > $etc_shadow
+	cp -av $etc_shadow ${etc_shadow}~
+	cat $shadow_tmp > $etc_shadow
       fi
     fi
   fi
-elif has_role passwdb ; then
+#elif has_role userdb userdb_login ; then
   #
   # Create /var/db files (for nsswitch.conf)
   #
-  :
 fi
-
-
