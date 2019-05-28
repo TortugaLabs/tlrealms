@@ -9,6 +9,9 @@ require api-enrollments.sh
 
 cd /
 
+# Make sure that there is a valid Queue-Dir
+mkdir -p "$(enrolls_queue_dir)" && chmod 777 "$(enrolls_queue_dir)"
+
 srvpipe=$TLR_LOCAL/run/priv
 
 cleanup_process() {
