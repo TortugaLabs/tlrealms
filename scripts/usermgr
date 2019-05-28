@@ -16,6 +16,15 @@ def_gecos() {
 def_home() {
   echo "/home/$user"
 }
+rand_user() {
+  local user
+  while : ; do
+    user="u$RANDOM"
+    user_exists "$user" || break
+  done
+  echo "$user"
+}
+  
 
 op="$1" ; shift
 
@@ -66,7 +75,7 @@ add)
 
 
   for item in \
-	"user:Username" "uid:UID:users_pickuid" "gid:GID:def_gid" "gecos:GECOS:def_gecos" \
+	"user:Username:rand_user" "uid:UID:users_pickuid" "gid:GID:def_gid" "gecos:GECOS:def_gecos" \
 	"pw_dir:Home Directory:def_home" "passwd:Password:users_pwgen"
   do
     k=$(echo "$item" | cut -d: -f1)
@@ -83,12 +92,13 @@ add)
       read -p "$p" $k
       eval c=\"\$$k\"
       [ -z "$c" ] && eval $k'="$d"'
+    elif [ "$c" = auto ] || [ "$c" = "#" ]  ; then
+      d="$($d)"
+      eval $k='"$d"'
     fi
     if [ "$k" = "user" ] ; then
       user=$(users_namechk "$user") || die 70 "Invalid user name specified"
       users_exists $user && die 71 "$user: already exist"
-    else
-      eval
     fi
   done
   users_add --uid=$uid --gid=$gid "$user"
