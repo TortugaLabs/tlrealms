@@ -18,7 +18,18 @@ if depcheck $shadow_txt $0 $(userspol_pwdfiles) ; then
   chmod 600 $shadow_txt
 fi
 
-webuser=apache
+if [ -z "${webuser:-}" ]; then
+  webuser=bin		# Suitable (secure) default...
+  if [ -f /etc/apk/world ] ; then
+    if grep -q apache /etc/apk/world ; then
+      webuser=apache
+    elif grep -q nginx /etc/apk/world ; then
+      webuser=nginx
+    elif grep -q mini_httpd /etc/apk/world ; then
+      webuser=minihttpd
+    fi
+  fi
+fi
 if id $webuser >/dev/null 2>&1 ; then
   for htmode in htpasswd htdigest
   do
@@ -28,22 +39,16 @@ if id $webuser >/dev/null 2>&1 ; then
       gen_pwdfile $htmode $(userspol_pwdfiles) > ${htfile}-
       > ${htfile} ; chmod 600 ${htfile}
       awk -f $TLR_LIB/pwfix.awk -vshadow=${htfile}- $passwd_txt > ${htfile}
-      chown $webuser $htfile
-      chmod 600 $htfile
       rm ${htfile}-
     fi
+    chown $webuser $htfile
+    chmod 600 $htfile
   done
 fi
 
 #
 # Merge TL|Realm users with /etc/passwd files
 #
-for g1 in passwd shadow
-do
-  [ -f $TLR_LOCAL/$g1.g1 ] && continue
-  cp -a /etc/$g1 $TLR_LOCAL/$g1.g1
-done
-  
 if [ ${GID_MIN:=11000} -lt ${UID_MIN:=2000} ] ; then
   min_id=$GID_MIN
 else
@@ -52,33 +57,34 @@ fi
 max_id=${XID_MAX:-65500}
   
 etc_passwd=/etc/passwd ; passwd_tmp=$TLR_LOCAL/passwd.tmp
-if depcheck $etc_passwd $0 $passwd_txt ; then
+if depcheck $passwd_tmp $etc_passwd $0 $passwd_txt ; then
   (
-    awk -vFS=":" '$3 < '$min_id' || $3 > '$max_id $etc_passwd | sort -t : -k 3 -n
+    awk -vFS=":" '$3 < '$min_id' || $3 > '$max_id $etc_passwd
     cat $passwd_txt
-  ) > $passwd_tmp
+  ) | sort -t : -k 3 -n > $passwd_tmp
 fi
 etc_shadow=/etc/shadow ; shadow_tmp=$TLR_LOCAL/shadow.tmp
-if depcheck $etc_shadow $0 $shadow_txt ; then
+if depcheck $shadow_tmp $etc_shadow $0 $shadow_txt ; then
   (
     awk -f $TLR_LIB/pwfix.awk -vshadow=$etc_shadow -vmin=$min_id -vmax=$max_id $etc_passwd
     cat $shadow_txt
   ) > $shadow_tmp
+  chmod 600 $shadow_tmp
 fi
 
 if has_role users users_login ; then
   if [ $(wc -l < $passwd_tmp) -gt 5 ] ; then
     if ! cmp $passwd_tmp $etc_passwd ; then
-      cp -a $etc_passwd ${etc_passwd}~
+      cp -a $etc_passwd ${etc_passwd}-
       cat $passwd_tmp > $etc_passwd
     else
       : touch $etc_passwd
     fi
   fi
-  if has_role user_login ; then
+  if has_role users_login ; then
     if [ $(wc -l < $shadow_tmp) -gt 5 ] ; then
       if ! cmp $shadow_tmp $etc_shadow ; then
-	cp -av $etc_shadow ${etc_shadow}~
+	cp -av $etc_shadow ${etc_shadow}-
 	cat $shadow_tmp > $etc_shadow
       fi
     fi
