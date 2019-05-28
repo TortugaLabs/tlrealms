@@ -46,7 +46,15 @@ require() {
   done
 }
 ckexport() {
-  local i
+  local i mkdir=false
+  while [ $# -gt 0 ]
+  do
+    case "$1" in
+    -c) mkdir=true ;;
+    *) break
+    esac
+    shift
+  done
   eval "local v=\"\${$1:-}\""
   if [ -z "$v" ] ; then
     eval "export $1=\"\$2\""
@@ -54,7 +62,13 @@ ckexport() {
   fi
   for i in $v
   do
-    [ ! -d "$i" ] && die 120 "$1: Missing $i"
+    if [ ! -d "$i" ] ; then
+      if $mkdir ; then
+	mkdir -p "$i"
+      else
+	die 120 "$1: Missing $i"
+      fi
+    fi
   done
   return 0
 }
@@ -63,7 +77,7 @@ ckexport TLR_ETC /etc
 ckexport TLR_HOME "$TLR_ETC/tlr"	# sync'ed data
 ckexport TLR_LOCAL "$TLR_ETC/tlr-local"	# local only data
 
-ckexport TLR_LOGS "/var/log/tlr"
+ckexport -c TLR_LOGS "/var/log/tlr"
 
 ckexport TLR_SCRIPTS "$TLR_HOME/scripts"
 ckexport TLR_DATA "$TLR_HOME/data"
