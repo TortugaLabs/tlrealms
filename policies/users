@@ -7,6 +7,49 @@
 require depcheck.sh
 require pol-users.sh
 
+# Used for SSO mappings...
+users_mapfiles=$(find "$TLR_DATA/users.d" -mindepth 1 -maxdepth 1 -type f -name '*.pwd' | while read f
+do
+  c=$(echo "$f" | sed -e 's/\.pwd$/.cfg/')
+  [ ! -f "$c" ] && continue
+  c=$(echo "$f" | sed -e 's/\.pwd$/.map/')
+  [ -f "$c" ] && echo "$c"
+done) || :
+
+mapfile="$TLR_LOCAL/ident_sso.map"
+if depcheck $mapfile $0 $users_mapfiles ; then
+  > "${mapfile}-" ; chmod 600 "${mapfile}-"
+  (for f in $users_mapfiles
+  do
+    username="$(basename $f .map)"
+    ident_sso=""
+    (
+      . "$f"
+      [ -n "$ident_sso" ] && echo "$ident_sso:$username"
+    )
+  done) >"${mapfile}-"
+  mv -f "${mapfile}-" "${mapfile}"
+fi
+mapfile="$TLR_LOCAL/social_sso.map"
+if depcheck $mapfile $0 $users_mapfiles ; then
+  > "${mapfile}-" ; chmod 600 "${mapfile}-"
+  (for f in $users_mapfiles
+  do
+    username="$(basename $f .map)"
+    social_logins=""
+    (
+      . "$f"
+      if [ -n "$social_logins" ] ; then
+	for email in $(echo "$social_logins" | tr , ' ')
+	do
+	  echo "$email:$username"
+	done
+      fi
+    )
+  done) >"${mapfile}-"
+  mv -f "${mapfile}-" "${mapfile}"
+fi
+
 passwd_txt=$TLR_LOCAL/passwd.txt
 if depcheck $passwd_txt $0 $(userspol_pwdfiles) ; then
   gen_etcpasswd $(userspol_pwdfiles) | sort -t : -k 3 -n > $passwd_txt
@@ -45,47 +88,6 @@ if id $webuser >/dev/null 2>&1 ; then
     chmod 600 $htfile
   done
 
-  # Used for SSO mappings...
-  users_mapfiles=$(find "$TLR_DATA/users.d" -mindepth 1 -maxdepth 1 -type f -name '*.pwd' | while read f
-  do
-    c=$(echo "$f" | sed -e 's/\.pwd$/.cfg/')
-    [ ! -f "$c" ] && continue
-    c=$(echo "$f" | sed -e 's/\.pwd$/.map/')
-    [ -f "$c" ] && echo "$c"
-  done) || :
-  
-  mapfile="$TLR_LOCAL/ident_sso.map"
-  if depcheck $mapfile $0 $users_mapfiles ; then
-    > "${mapfile}-" ; chmod 600 "${mapfile}-"
-    (for f in $users_mapfiles
-    do
-      username="$(basename $f .map)"
-      ident_sso=""
-      (
-	. "$f"
-	[ -n "$ident_sso" ] && echo "$ident_sso:$username"
-      )
-    done) >"${mapfile}-"
-    mv -f "${mapfile}-" "${mapfile}"
-  fi
-  mapfile="$TLR_LOCAL/social_sso.map"
-  if depcheck $mapfile $0 $users_mapfiles ; then
-    > "${mapfile}-" ; chmod 600 "${mapfile}-"
-    (for f in $users_mapfiles
-    do
-      username="$(basename $f .map)"
-      social_logins=""
-      (
-	. "$f"
-	[ -z "$social_logins" ] && return 0
-	for email in $(echo "$social_logins" | tr , ' ')
-	do
-	  echo "$email:$username"
-	done
-      )
-    done) >"${mapfile}-"
-    mv -f "${mapfile}-" "${mapfile}"
-  fi
   
 fi
 
