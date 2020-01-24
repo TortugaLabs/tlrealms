@@ -1,0 +1,20 @@
+#!/bin/sh
+#include prologue.sh
+#
+# Configure cron jobs
+#
+is_master && exit 0 # This policy only valid from client systems
+
+for probe in cron.hourly  periodic/hourly
+do
+  [ ! -d /etc/$probe ] && continue
+
+  for job in cron:tlr-upd
+  do
+    jobname=$(echo "$job" | cut -d: -f2)
+    job=$(echo "$job" | cut -d: -f1)
+    [ -x $TLR_SCRIPTS/$job ] && ln -sf $TLR_SCRIPTS/$job /etc/$probe/$jobname
+  done
+  break
+done
+  
