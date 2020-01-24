@@ -55,7 +55,7 @@ fi
 etc_gshadow=/etc/gshadow ; gshadow_tmp=$TLR_LOCAL/gshadow.tmp
 if [ -f $etc_gshadow ] ; then
   if depcheck $gshadow_tmp $etc_gshadow $0 $group_tmp ; then
-    awk -f $TLR_LIB/grfix.awk -vshadow=$etc_gshadow -vmin=$min_id -vmax=$max_id $group_tmp > $gshadow_tmp
+    awk -f $TLR_LIB/grfix.awk -vgshadow=$etc_gshadow -vmin=$min_id -vmax=$max_id $group_tmp > $gshadow_tmp
   fi # depchk
 fi # -f $etc_gshadow
 
@@ -71,7 +71,7 @@ if has_role users users_login ; then
   if [ -f $etc_gshadow ] ; then
     if [ $(wc -l < $gshadow_tmp) -gt 5 ] ; then
       if ! cmp $gshadow_tmp $etc_gshadow ; then
-	cp - $etc_gshadow ${etc_gshadow}-
+	cp -a $etc_gshadow ${etc_gshadow}-
 	cat $gshadow_tmp > $etc_gshadow
       fi
     fi
