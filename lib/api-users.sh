@@ -14,7 +14,7 @@ users_namechk() {
 find_user_files() {
   local name="$1"
   # make sure we don't get false positives from user names with "." in them...
-  find $TLR_DATA/users.d -name "$name"'.*' -maxdepth 1 -mindepth 1 \
+  find $TLR_DATA/users.d -maxdepth 1 -mindepth 1 -name "$name"'.*' \
 	| grep '/'"$name"'\.[a-z0-9]*$'
 }
 
@@ -197,7 +197,7 @@ users_passwd() {
 }
 
 users_list() {
-  find "$TLR_DATA/users.d" -name '*.cfg' -maxdepth 1 -mindepth 1 -type f \
+  find "$TLR_DATA/users.d" -maxdepth 1 -mindepth 1 -name '*.cfg' -type f \
 	| sed -e "s!^$TLR_DATA/users.d/!!" -e 's/\.cfg$//'
 }
 

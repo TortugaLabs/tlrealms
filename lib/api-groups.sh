@@ -13,7 +13,7 @@ groups_del() {
   local grname supdate=false
   for grname in "$@"
   do
-    local grfiles=$(find $TLR_DATA/groups.d -name "$grname"'.*' -maxdepth 1 -mindepth 1)
+    local grfiles=$(find $TLR_DATA/groups.d -maxdepth 1 -mindepth 1 -name "$grname"'.*')
     [ -z "$grfiles" ] && continue
     rm -rf "$grfiles" && supdate=true || :
     
@@ -200,7 +200,7 @@ groups_deluser() {
 }
 
 groups_list() {
-  find "$TLR_DATA/groups.d" -name '*.cfg' -maxdepth 1 -mindepth 1 -type f \
+  find "$TLR_DATA/groups.d" -maxdepth 1 -mindepth 1 -name '*.cfg' -type f \
 	| sed -e "s!^$TLR_DATA/groups.d/!!" -e 's/\.cfg$//'
 }
 
