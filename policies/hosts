@@ -22,7 +22,7 @@ do
   q=" "
 done
 
-depcheck $known_hosts $0 $(find $hosts_db -name '*.pub' -maxdepth 1 -mindepth 1 -type f) \
+depcheck $known_hosts $0 $(find $hosts_db -maxdepth 1 -mindepth 1 -name '*.pub' -type f) \
 	&& gen_known_hosts $known_hosts
 
 if depcheck $root_keys $0 $admin_keys $master_keys $admin_users_keys ; then
