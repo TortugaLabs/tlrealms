@@ -60,7 +60,15 @@ if ! grep -q "$extra_keys" "$sshd_config" ; then
   echo "$ntxt" | sed -e 's/^://' | $run tee $sshd_config | md5sum || echo $?
   # We need to restart sshd
   if type rc-service ; then
+    echo "Alpine OpenRC system"
     rc-service sshd restart
+  elif type sv ; then
+    echo "Void-Linux runsvc"
+    if [ ! -d /var/service/sshd ] ; then
+      ln -s /etc/sv/sshd /var/service
+    else
+      sv restart sshd
+    fi
   fi
 fi
 
