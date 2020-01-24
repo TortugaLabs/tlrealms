@@ -62,6 +62,10 @@ del)
   hosts_rm "$@"
   apply_policies
   ;;
+ci)
+  is_master || die 10 "This should only be run from master server"
+  serial_update
+  ;;
 help)
   cat <<-EOF
 	Sub-commands:
@@ -73,6 +77,8 @@ help)
 	  Delete the given host
 	- $0 sync [--all|host]
 	  Synchronize data of host or all if --all was given.
+	- $0 ci
+	  Update `serial` number to force a resync.
 	EOF
   ;;
 *)
