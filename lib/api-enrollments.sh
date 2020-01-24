@@ -83,7 +83,7 @@ enrolls_exists() {
 }
 
 enrolls_list() {
-  find "$(enrolls_queue_dir)" -type d -maxdepth 1 -mindepth 1 | (
+  find "$(enrolls_queue_dir)" -maxdepth 1 -mindepth 1 -type d | (
     local d rhost status logs
     while read d
     do
@@ -102,7 +102,7 @@ enrolls_list() {
       echo $d,$status,$logs
     done
   )
-  find "$TLR_LOGS" -type f -maxdepth 1 -mindepth 1 -name 'enroll-*' | (
+  find "$TLR_LOGS" -maxdepth 1 -mindepth 1 -type f -name 'enroll-*' | (
     local queue_dir=$(enrolls_queue_dir) cnt=0
     while read d
     do
