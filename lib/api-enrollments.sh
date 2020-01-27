@@ -144,19 +144,10 @@ enrolls_del() {
   done
 }
 
-enrolls_this() {
-  local clobber=false
-  while [ $# -gt 0 ] ; do
-    case "$1" in
-    --clobber|-f) clobber=true ;;
-    --no-clobber|-i) clobber=false ;;
-    *) break ;;
-    esac
-    shift
-  done
+_enrolls_register() {
+  local vv="$1" clobber="$2"
   local \
 	queue_dir=$(enrolls_queue_dir) \
-	vv="$1"
 
   if [ ! -f "$queue_dir/$vv.d/metadata.cfg" ] ; then
     echo "Error enrolling $vv, missing metadata.cfg" 1>&2
@@ -180,6 +171,9 @@ enrolls_this() {
 
   remip="$(echo "$vv" | cut -d, -f3)"
   echo "ENROLLING \"$name\" ($remip)" 1>&2
+  echo "$name"
+  echo "$remip"
+  exec 1>&2
 
   # - add keys to TLR_DATA/hosts.d
   find "$queue_dir/$vv.d" -maxdepth 1 -mindepth 1 -type f -name "ssh_host_*.pub" -print0 \
@@ -193,14 +187,51 @@ enrolls_this() {
     ssh-keygen -R "$remip" -f "$known_hosts"
     ssh-keygen -R "$name" -f "$known_hosts"
   fi
+  return 0
+}
 
-  # - rsync TLR_HOME to rhost and aply policies...
+enrolls_this() {
+  local clobber=false offline=false output=''
+  while [ $# -gt 0 ] ; do
+    case "$1" in
+    --clobber|-f) clobber=true ;;
+    --no-clobber|-i) clobber=false ;;
+    --offline|-d) offline=true ;;
+    --online|-n) offline=false ;;
+    --tar=*) output="${1#--tar=}" ;;
+    *) break ;;
+    esac
+    shift
+  done
+  local vv="$1" txt
+  txt=$(_enrolls_register "$vv" "$clobber") || return 1
+  [ -z "$txt" ] && return 1
+  local name="$(echo "$txt" | ( read j ; echo $j))"
+  local remip="$(echo "$txt" | ( read j ; read j ; echo $j))"
+
+
   if [ "$name" = "$(hostname)" ] ; then
     echo "Adding $name to itself..."
-  else
+    return 0
+  fi
+  if ! $offline ; then
     SSH_IP_OVERRIDE="$remip" SSH_IDENTITY="$queue_dir/$vv.d/admin_key" $TLR_SCRIPTS/syncr -v "$name"
     SSH_IP_OVERRIDE="$remip" SSH_IDENTITY="/etc/ssh/ssh_host_rsa_key" $TLR_SCRIPTS/syncr --rsh "$name" uptime
+    return $?
   fi
+  # This is an offline enrollment...
+  local tmppath=$(mktemp -d)
+  trap "rm -rf $tmppath" EXIT
+  rsync -az --exclude='*~' --delete  "$TLR_HOME/" "$tmppath"
+  if [ -n "$output" ] ; then
+    tar -C "$tmppath" -zcvf "$output" .
+    return $?
+  fi
+  echo ''
+  echo '== begin here =='
+  tar -C "$tmppath" -zcvf - . | base64
+  echo ''
+  echo '== end here =='
 }
 
 
