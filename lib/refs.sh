@@ -19,6 +19,7 @@ mksym() {
 ## This function is meant to sanitize text so it is suitable for variable
 ## nameing.
   echo "$*" | tr ' /.a-z-' '___A-Z_' | tr -dc '_A-Z0-9'
+  # tr ' /.a-z-' '___A-Z_'  <<<"$*"| tr -dc '_A-Z0-9'
 }
 
 assign() {
@@ -32,7 +33,6 @@ assign() {
 ## This function assigns a value to the named variable.  Unlink straight
 ## assignment with `=`, the variable name can be a variable itself referring
 ## to the actual variable.
-  local var="$1"
   eval "$1=\"\$2\""
 }
 
