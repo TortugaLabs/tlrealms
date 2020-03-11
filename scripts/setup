@@ -1,57 +1,12 @@
 #!/bin/sh
 #include prologue.sh
 #
-# Setup scripts
+# Setup demo
 #
-# This script contains snippets to perform different setup functions...
+# Configure demo database
 #
-[ $# -eq 0 ] && die 10 "$0: op [args]"
-
 require fixfile.sh
 require api-users.sh
-
-setup_www() {
-  if [ $# -eq 0 ] ; then
-    set - digest /var/www/localhost/htdocs
-  fi
-  local mode="$1" wwwdir="$2"
-  
-  mkdir -p $wwwdir/tlr $wwwdir/tlrsec
-  mkdir -p $TLR_LOCAL/qdir ; chmod 777 $TLR_LOCAL/qdir
-  mkdir -p $TLR_LOCAL/run
-  mkdir -p $TLR_LOGS
-  
-  ln -sf $TLR_SCRIPTS/www-enroll.cgi $wwwdir/tlr/enroll.cgi
-  ln -sf $TLR_SCRIPTS/www-enrollme.sh.in $wwwdir/tlr/enrollme.sh.in
-  ln -sf $TLR_SCRIPTS/www-sync.cgi $wwwdir/tlr/sync.cgi
-  ln -sf $TLR_SCRIPTS/swww-doenroll.cgi $wwwdir/tlrsec/doenroll.cgi
-  
-  if [ x"$mode" = x"digest" ] ; then
-    basic="# "
-    digest=""
-    domain="${domain:-TL|Realm}"
-  else
-    basic=""
-    digest="# "
-    domain="${domain:-tl-domain}"
-  fi
-  fixfile --mode=644 $wwwdir/tlrsec/.htaccess <<-EOF
-	# Secured zone
-	
-	${basic}AuthName "TL|Realm Password Required"
-	${basic}AuthType Basic
-	${basic}AuthUserFile "/etc/tlr-local/htpasswd.txt"
-	
-	${digest}AuthName "$domain"
-	${digest}AuthType Digest
-	${digest}AuthDigestDomain /tlrsec/
-	${digest}AuthDigestProvider file
-	${digest}AuthUserFile "/etc/tlr-local/htdigest.txt"
-	
-	AuthGroupFile "/etc/tlr-local/htgroup.txt"
-	Require group admins
-	EOF
-}
 
 setup_demo() {
   groupmgr add admins || :
@@ -94,42 +49,5 @@ setup_demo() {
   fi
 }
 
-setup_init() {
-  # install init scripts...
-  if type rc-service ; then
-    rm -f /etc/init.d/srvpriv
-    ln -s $TLR_LIB/init.d-openrc/srvpriv /etc/init.d/srvpriv
-    rc-update add srvpriv
-  else
-    echo "***"
-    echo "*** Unknown init system"
-    echo "***"
-  fi
 
-}
-
-op="$1" ; shift
-
-
-case "$op" in
-www)
-  setup_www "$@"
-  ;;
-demo)
-  setup_demo "$@"
-  ;;
-init)
-  setup_init "$@"
-  ;;
-help)
-  cat <<-EOF
-	Sub-commands:
-	- $0 www : setup web server
-	- $0 demo : setup demo users
-	- $0 init : configure initd scripts
-	EOF
-  ;;
-*)
-  die 20 "Invalid op: $op"
-  ;;
-esac
+setup_demo
