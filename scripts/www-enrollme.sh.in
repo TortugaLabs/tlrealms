@@ -4,6 +4,7 @@
 #
 set -euf -o pipefail
 [ -z "${TLR_SERVER:-}" ] && TLR_SERVER='<TLR_SERVER>'
+[ -z "${TLR_SCRIPTS:-}" ] && TLR_SCRIPTS='<TLR_SCRIPTS>'
 run="echo -- "
 
 rc=false
@@ -17,8 +18,7 @@ $rc && exit 1
 
 #include ../lib/urlencode.sh
 
-
-hostname="$(uname -n)"
+hostname="${HOSTNAME:-$(uname -n)}"	# can be overriden with HOSTNAME environment variable
 echo "Enrollment as: $hostname"
 
 workdir=$(mktemp -d)
@@ -72,7 +72,30 @@ if ! grep -q "$extra_keys" "$sshd_config" ; then
   fi
 fi
 
-mkdir -p /etc/tlr /etc/tlr-local /var/log/tlr
+if [ -n "${TLR_STORE:-}" ] ; then
+  [ -d "$TLR_STORE" ] && rm -rf "$TLR_STORE"
+  mkdir -p "$TLR_STORE"
+  rm -rf /etc/tlr-store
+  ln -s $TLR_STORE /etc/tlr-store
+  for d in tlr:main tlr-local:local
+  do
+    d1=$(echo $d |cut -d: -f1)
+    d2=$(echo $d |cut -d: -f2)
+    rm -rf /etc/$d1 $TLR_STORE/$d2
+    mkdir -p $TLR_STORE/$d2
+    ln -s $TLR_STORE/$d2 /etc/$d1
+  done
+else
+  mkdir -p /etc/tlr /etc/tlr-local
+fi
+mkdir -p /var/log/tlr
 
 echo '='
 cat "$workdir/metadata.cfg"
+
+# Check if doing an off-line enrollment...
+if [ -n "${OFFLINE:-}" ] ; then
+  enroll_id=$(. "$workdir/metadata.cfg" ; echo "$id") || enroll_id=""
+  ssh $OFFLINE $TLR_SCRIPTS/enrollmgr approve ${ENROLL_OPTS:-} --offline $enroll_id \
+    | sed -e '1,/== begin here ==/ d' | base64 -d | tar -C /etc/tlr -zxvf -
+fi

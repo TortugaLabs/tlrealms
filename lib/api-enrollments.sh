@@ -42,6 +42,7 @@ enrolls_add() {
 	remote=$REMOTE_ADDR
 	name=$host
 	serial=$serial
+	id=$tstamp,$serial,$remote,$host
 	EOF
   ssh-keygen -q -N '' -C 'provisional admin' -f "$dir/admin_key"
   for type in $key_types
@@ -211,7 +212,7 @@ enrolls_this() {
 
 
   if [ "$name" = "$(hostname)" ] ; then
-    echo "Adding $name to itself..."
+    echo "Adding $name to itself..." 1>&2
     return 0
   fi
   if ! $offline ; then

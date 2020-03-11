@@ -9,6 +9,7 @@ require api-enrollments.sh
     echo ''
     sed \
 	-e "s/<TLR_SERVER>/$SERVER_NAME/" \
+  -e "s!<TLR_SCRIPTS>!$TLR_SCRIPTS!" \
 	-e "s/\"echo -- \"/''/" \
 	< enrollme.sh.in
     exit
