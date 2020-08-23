@@ -16,6 +16,8 @@ Data is synchronized on a regular basis from a central server.
   - soft dependancy on ashlib
   - travis-ci
 - plist management
+  - <key><spc><value>
+  - `awk '{$1="";$0=$0;$1=$1}1'`
 - self-configuration
   - Directory to transfer
   - location of lib files + ashlib
