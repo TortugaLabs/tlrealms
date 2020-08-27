@@ -1,0 +1,71 @@
+#!/bin/sh
+#
+# Run defined tests
+#
+# Usage:
+#
+#    run [options]
+#
+# -c : clean-up, delete all temp directories before run.
+# -n : do not run any tests (useful with -c)
+#
+set -euf -o pipefail
+export TESTDIR=$(cd $(dirname "$0") ; pwd)
+
+cleanup=false ; norun=false ; rc=0
+
+while [ $# -gt 0 ]
+do
+  case "$1" in
+  --clean|-c) cleanup=true ;;
+  --norun|-n) norun=true ;;
+  *) break ;;
+  esac
+  shift
+done
+
+if $cleanup ; then
+  find "$TESTDIR" -maxdepth 1 -name "t.*" -print0 | xargs -r -0 rm -rf
+fi
+
+$norun && exit 0 || :
+
+
+find "$TESTDIR" -maxdepth 1 -type f -name '*.t.sh' | sort | (
+  count=0; good=0; bad=0
+  while read f
+  do
+    count=$(expr $count + 1)
+    (
+      echo "> $f:"
+      sh -n "$f" || exit 1
+      exec 3>&1
+      (
+        exec 2>&1
+        sh -euf -o pipefail "$f" | tee "$f.runout" 1>&3
+      ) | tee "$f.runerr" 1>&2
+    ) && rc=true || rc=false
+    for ch in out err
+    do
+      if [ -f "$f.std$ch" ] ; then
+	diff -u "$f.std$ch" "$f.run$ch" && rm -f "$f.run$ch" || rc=false
+      else
+        rm -f "$f.run$ch"
+      fi
+    done
+    if $rc ; then
+      echo "< SUCCESS"
+      good=$(expr $good + 1)
+    else
+      echo "< FAILED"
+      bad=$(expr $bad + 1)
+    fi
+  done
+  echo "total: $count, success: $good, failed: $bad"
+  [ $bad -gt 0 ] && exit 1 || exit 0
+) || rc=$?
+
+exit $rc
+
+
+
