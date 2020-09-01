@@ -1,0 +1,55 @@
+#!/bin/sh
+#
+[ -z "${TLR_BASE:-}" ] && export TLR_BASE=$(cd $(dirname "$0")/..;pwd)
+. $TLR_BASE/crt.sh
+
+if [ -z "${SSH_ORIGINAL_COMMAND:-}" ] ; then
+  [ $# -eq 0 ] && exit 0 # No-op...
+
+  while [ $# -gt 0 ]
+  do
+    case "$1" in
+      --*=*) export "${1#--}" ;;
+      *) break ;;
+    esac
+    shift
+  done
+  export SSH_ORIGINAL_COMMAND="$*" # Simulate a SSH forced command
+fi
+
+rpccmd="$(basename "$0")"
+while :
+do
+  arg0=$(basename "$(echo "$SSH_ORIGINAL_COMMAND" | xargs | (read a j ; echo "$a" ))")
+  argX=$(echo "$SSH_ORIGINAL_COMMAND" | xargs | (read a j ; echo "$j" ))
+  if [ x"$arg0" = x"$rpccmd" ] ; then
+    # Weird stuff can happen sometines
+    SSH_ORIGINAL_COMMAND="$argX"
+    continue
+  fi
+  break
+done
+
+if [ -f "$TLR_BASE/sshrpc.d/$arg0.sh" ] ; then
+  exec "$TLR_BASE/sshrpc.d/$arg0.sh" $argX
+fi
+
+quit 10 "$arg0: Unknown RPC script"
+
+
+#~ case "$arg0" in
+#~ rsync)
+  #~ echo "$argX" 1>&2
+  #~ env 1>&2
+  #~ # env TLR_CLIENT=<HOST> rsync --server --sender -logDtprze.iLsfxC . <SRCPATH>
+  #~ exec rsync --server --sender -logDtprze.iLsfxC . ${TLR_DATA}/
+  #~ ;;
+#~ *)
+  #~ echo "CMD: $arg0"
+  #~ echo "ARGS: $argX"
+  #~ env
+  #~ ;;
+#~ esac
+
+
+

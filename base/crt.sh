@@ -26,8 +26,9 @@ tlcfg ASHLIB_PATH $TLR_BASE/lib:$ASHLIB
 
 tlcfg TLR_DATA /etc/tlr-data
 tlcfg TLR_LOCAL /var/local/tlr
-tlcfg TLR_SETTINGS $TLR_DATA/settings.sh
 
+tlcfg TLR_SETTINGS $TLR_DATA/settings.sh
 [ -f "$TLR_SETTINGS" ] && . "$TLR_SETTINGS"
 
 . $ASHLIB/ashlib.sh
+
