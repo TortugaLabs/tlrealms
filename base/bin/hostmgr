@@ -1,0 +1,134 @@
+#!/bin/sh
+#
+[ -z "${TLR_BASE:-}" ] && export TLR_BASE=$(cd $(dirname "$0")/..;pwd)
+prcmd=$(basename "$0")
+
+. $TLR_BASE/crt.sh
+
+include -1 api-hosts.sh
+
+usage() {
+  cat <<-EOF
+	Sub-commands:
+
+	- $prcmd list [[-v] [--pub|--cfg] host]
+	  Show known hosts
+	- $prcmd new [--clobber] [--base64] [--output=tarball] _hostname_
+	  Create a new host
+	- $prcmd del _host_ [...]
+	  Delete the given host
+	- $prcmd set _hostname_ [key [value]]
+	  Set attribute for the _hostname_
+	- $prcmd get [-v] [--pub|--cfg] _hostname_ key
+	  Return a host attribute value
+	EOF
+}
+
+if [ $# -eq 0 ] ; then
+  echo "Must specify a sub-command"
+  usage
+  exit 1
+fi
+
+op="$1" ; shift
+case "$op" in
+list)
+  # List hosts
+  if [ $# -eq 0 ] ; then
+    hosts_list
+  else
+    optv="" ; mode=cfg
+    while [ $# -gt 1 ]
+    do
+      case "$1" in
+	-v) optv="$1" ;;
+	--pub|-p) mode=pub ;;
+	--cfg|-c) mode=cfg ;;
+	*) break ;;
+      esac
+      shift
+    done
+    [ $# -ne 1 ] && quit 51 "Must specify one hostname"
+    hosts_exists "$1" || quit 75 "$1: does not exist"
+    hosts_get $optv --$mode "$1"
+  fi
+  ;;
+new)
+  # Create a new host
+  force=false ; output=- ; encode=cat
+  while [ $# -gt 0 ]
+  do
+    case "$1" in
+    --clobber|--force)
+      force=true
+      ;;
+    --no-clobber|--no-force)
+      force=false
+      ;;
+    --base64)
+      encode=base64
+      ;;
+    --output=*)
+      output=${1#--output=}
+      ;;
+    *)
+      break
+      ;;
+    esac
+    shift
+  done
+  [ $# -eq 0 ] && quit 10 "Must specify a host name"
+  new_host="$1"
+  if hosts_exists "$new_host" ; then
+    if $force ; then
+      hosts_del "$new_host"
+    else
+      quit 68 "$new_host: host already exists"
+    fi
+  fi
+  hosts_new "$new_host" "$output" | $encode
+  tlrmgr runpol
+  ;;
+del)
+  [ $# -eq 0 ] && quit 30 "No hosts specified"
+  hosts_del "$@"
+  tlrmgr runpol
+  ;;
+get)
+  optv="" ; mode=cfg
+  while [ $# -gt 1 ]
+  do
+    case "$1" in
+      -v) optv="$1" ;;
+      --pub|-p) mode=pub ;;
+      --cfg|-c) mode=cfg ;;
+      *) break ;;
+    esac
+    shift
+  done
+  [ $# -ne 2 ] && quit 51 "Must specify host and key"
+  hosts_exists "$1" || quit 75 "$1: does not exist"
+  hosts_get $optv --$mode "$@"
+  ;;
+set)
+  mode=cfg
+  while [ $# -gt 1 ]
+  do
+    case "$1" in
+      --pub|-p) mode=pub ;;
+      --cfg|-c) mode=cfg ;;
+      *) break ;;
+    esac
+    shift
+  done
+  [ $# -lt 2 ] && quit 51 "Must specify host and key"
+  hosts_exists "$1" || quit 74 "$1: does not exist"
+  hosts_set "$@"
+  ;;
+help)
+  usage
+  ;;
+*)
+  quit 20 "Invalid op: $op"
+  ;;
+esac
