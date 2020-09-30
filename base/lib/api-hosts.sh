@@ -15,6 +15,10 @@
 #
 #*#####################################################################
 ## Functions to manage hosts data
+##
+## Configurable items:
+##
+## - TLR_DATA : location of hosts_db directory
 #*####################################################################
 include -1 api-plist.sh
 
@@ -119,7 +123,6 @@ hosts_get() {
   ## * --cfg - modify cfg values (default)
   ## * id - host name
   ## * key - key to return
-  ## * val - value to write to key, if '' or missing, the key is removed
   ## # DESC
   ## Reads host values for the given keys.  If no key specified it lists
   ## the keys that are defined.  If `-v` is used when no keys are
