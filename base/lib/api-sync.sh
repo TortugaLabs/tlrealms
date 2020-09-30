@@ -110,7 +110,7 @@ sync_gen_host_keys() {
     fi
   fi
   local fcmd="${TLR_SSH_FORCED_CMD:-/usr/local/bin/sshrpc}" v
-  for v in ${TLR_SSH_FORCED_ENV}
+  for v in ${TLR_SSH_FORCED_ENV:-}
   do
     fcmd="$v $fcmd"
   done
