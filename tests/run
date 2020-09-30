@@ -37,6 +37,7 @@ find "$TESTDIR" -maxdepth 1 -type f -name '*.t.sh' | sort | (
   do
     count=$(expr $count + 1)
     (
+      exec </dev/null
       echo "> $f:"
       sh -n "$f" || exit 1
       exec 3>&1
@@ -45,6 +46,7 @@ find "$TESTDIR" -maxdepth 1 -type f -name '*.t.sh' | sort | (
         sh -euf -o pipefail "$f" | tee "$f.runout" 1>&3
       ) | tee "$f.runerr" 1>&2
     ) && rc=true || rc=false
+
     for ch in out err
     do
       if [ -f "$f.std$ch" ] ; then
