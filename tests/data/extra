@@ -1,0 +1,3 @@
+-PermitRootLogin yes
+-#TLR## Enabled /etc/ssh/userkeys/%u/authorized_keys for TLR deployed keys
+-AuthorizedKeysFile      .ssh/authorized_keys /etc/ssh/userkeys/%u/authorized_keys
