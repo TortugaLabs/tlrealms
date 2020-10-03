@@ -34,20 +34,29 @@ op="$1" ; shift
 case "$op" in
 list)
   # List hosts
+  optv="" ; mode=cfg
+  while [ $# -gt 1 ]
+  do
+    case "$1" in
+      -v) optv="$1" ;;
+      --pub|-p) mode=pub ;;
+      --cfg|-c) mode=cfg ;;
+      *) break ;;
+    esac
+    shift
+  done
+
   if [ $# -eq 0 ] ; then
-    hosts_list
+    if [ -z "$optv" ] ; then
+      hosts_list
+    else
+      local h
+      for h in $(hosts_list)
+      do
+        hosts_get $optv --mode "$1" | sed -e "s/^/$h: /"
+      done
+    fi
   else
-    optv="" ; mode=cfg
-    while [ $# -gt 1 ]
-    do
-      case "$1" in
-	-v) optv="$1" ;;
-	--pub|-p) mode=pub ;;
-	--cfg|-c) mode=cfg ;;
-	*) break ;;
-      esac
-      shift
-    done
     [ $# -ne 1 ] && quit 51 "Must specify one hostname"
     hosts_exists "$1" || quit 75 "$1: does not exist"
     hosts_get $optv --$mode "$1"
