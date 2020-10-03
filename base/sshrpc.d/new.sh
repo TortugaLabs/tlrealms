@@ -28,7 +28,7 @@ do
 done
 [ $# -eq 1 ] && quit 10 "Usage: $0 [--force] {new-host}"
 
-new_host="$1"
+new_host="$1" ; shift
 if hosts_exists "$new_host" ; then
   if $force ; then
     hosts_del "$new_host"
@@ -37,13 +37,15 @@ if hosts_exists "$new_host" ; then
   fi
 fi
 
+ROOT='${ROOT:-}'
+
 $enroll && cat <<-_PROLOGUE_
-	mkdir -p ${ROOT:-}/etc/ssh
-	tar -C ${ROOT:-}/etc/ssh -zxvf - <<-_EOF_
+	mkdir -p $ROOT/etc/ssh
+	tar -C $ROOT/etc/ssh -zxvf - <<-_EOF_
 	_PROLOGUE_
 hosts_new "$new_host" "$output" | base64
 $enroll && cat <<-_EPILOGUE_
 
 	_EOF_
 	_EPILOGUE_
-tlrmgr runpol
+
