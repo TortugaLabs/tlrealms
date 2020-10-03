@@ -1,0 +1,292 @@
+#!/bin/sh
+#
+[ -z "${TLR_BASE:-}" ] && export TLR_BASE=$(cd $(dirname "$0")/..;pwd)
+prcmd=$(basename "$0")
+
+. $TLR_BASE/crt.sh
+
+include -1 api-sync.sh
+
+
+usage() {
+  cat <<-EOF
+	Sub-commands:
+
+	- $prcmd runpol
+	  Apply policies
+	- $prcmd paths
+	  Show configured paths
+	- $prcmd setup $setup_args
+	  Set-up the environment
+	- $prcmd demodb $demo_db_args
+	  Create a demo database
+	EOF
+}
+
+runpol() {
+  quit 0 "$(echo -e "$op: \e[41;33munimplemented\e[m")"
+}
+
+show_paths() {
+  local p
+
+  for p in TLR_CFG TLR_BASE ASHLIB ASHLIB_PATH TLR_DATA TLR_LOCAL TLR_SETTINGS
+  do
+    echo -n ${p}=
+    eval echo \"\$$p\"
+  done
+}
+
+default_settings='#!/bin/sh
+#
+# General settings
+#
+# master="<SERVER>"
+# domain=the-kingdom
+
+#
+# Default shadow settings
+#
+# sp_min=0
+# sp_max=99999
+# sp_warn=7
+# sp_inact=""
+
+#
+# Realm login.defs
+#
+# GID_MIN=11000
+# UID_MIN=2000
+# XID_MAX=65500
+
+# GID_USERS=11000
+# GNAME_USERS=_users
+'
+
+
+setup_path() {
+  local vname="$1" vpath="$2" lnk="$3" sdir label
+  vpath="$(echo "$vpath" | sed -e 's!/*$!!')" # no trailing slashes
+
+  if [ -n "$lnk" ] ; then
+    if [ -L "$vpath" ] ; then
+      local cp=$(readlink "$vpath")
+      if [ x"$cp" = x"$lnk" ] ; then
+	echo "${vname}($vpath): is already a symlink to $lnk" 1>&2
+	# do nothing
+      else
+	echo "${vname}($vpath): was a symlink to $cp... fixing!" 1>&2
+	rm -f "$vpath"
+      fi
+    elif [ -d "$vpath" ] ; then
+      # A directory already exists!
+      # But it should be a symlink!
+      local c=1 bp="$vpath"
+      while [ -d "$bp" ]
+      do
+	bp="$vpath.$c"
+	c=$(expr $c + 1)
+      done
+      echo "${vname}($vpath): keeping as $bp"
+      mv "$vpath" "$bp"
+    elif [ -e "$vpath" ] ; then
+      # Something is already there (and it is not a symlink or directory)
+      echo "${vname}($vpath): removing existing object" 1>&2
+      rm -f "$vpath"
+    else
+      # nothing here...
+      echo "${vname}($vpath): is available" 1>&2
+    fi
+    [ ! -L "$vpath" ] && ln -s "$lnk" "$vpath"
+    sdir="$lnk"
+    label="$sdir"
+  else
+    sdir="$vpath"
+    label="${vname}($vpath)"
+  fi
+
+  if [ -L "$sdir" ] ; then
+    echo "$label: is a symlink... removing!" 1>&2
+    rm -f "$sdir"
+  elif [ -d "$sdir" ] ; then
+    echo "$label: already exists!" 1>&2
+  elif [ -e "$sdir" ] ; then
+    echo "$label: removing existing object" 1>&2
+    rm -f "$sdir"
+  fi
+
+  [ ! -d "$sdir" ] && mkdir -p "$sdir"
+  return 0
+}
+
+setup_args="[-v] [--data=store] [--local=store] [--sshd-config=path] [--extra-keys=path|--extra-keys-dir=dirpath]"
+setup() {
+  local data='' local='' v=true \
+	sshd_config="/etc/ssh/sshd_config" extra_keys_dir="etc/ssh/userkeys"
+  while [ $# -gt 0 ]
+  do
+    case "$1" in
+      -v|--verbose) v=true ;;
+      -q|--no-verbose) v=false ;;
+      --data=*) data=${1#--data=} ;;
+      --local=*) local=${1#--local=} ;;
+      --sshd-config=*) sshd_config=${1#--sshd-config=} ;;
+      --extra-keys-dir=*) extra_keys_dir=${1#--extra-keys-dir} ;;
+      *) break
+    esac
+    shift
+  done
+
+  # confirm installation paths
+  local dir dp
+  for dir in TLR_BASE ASHLIB
+  do
+    eval dp=\"\$$dir\"
+    [ ! -d "$dp" ] && quit 53 "$dir: missing directory.  Make sure software is properly installed"
+  done
+
+  #~ if [ ! -f "${TLR_CFG}" ] ; then
+  #~ # ... Create TLR_CFG template?
+  #~ fi
+
+  setup_path TLR_DATA "$TLR_DATA" "$data"
+  setup_path TLR_LOCAL "$TLR_LOCAL" "$local"
+
+  if [ ! -f "$TLR_DATA/settings.sh" ] ; then
+    echo -n "$TLR_SDATA/settings.sh: "
+    echo "$default_settings" | tee "$TLR_DATA/settings.sh" | wc
+  fi
+  if [ ! -f "$TLR_DATA/secrets.cfg" ] ; then
+    echo -n "$TLR_DATA/secrets.cfg: "
+    echo -e "#!/bin/sh\n# nothing to see..." | tee "$TLR_DATA/secrets.cfg" | wc
+    chmod 600 "$TLR_DATA/secrets.cfg"
+  fi
+
+  sync_sshdcfg_fixup $($v && echo -v) "$sshd_config" "$extra_keys_dir/%u/authorized_keys"
+  mkdir -p "$extra_keys_dir"
+
+  sync_sshd_restart
+
+  # cronjobs
+  local crondir etc=${ETCDIR:-/etc} var=${VARDIR:-/var}
+  for crondir in $etc/cron.hourly $etc/periodic/hourly ''
+  do
+    [ -z "$crondir" ] && break
+    [ ! -d "$crondir" ] && continue
+
+    cat > "$crondir/tlr-upd" <<-_EOF_
+	#!/bin/sh
+	exec $TLR_BASE/bin/tlrmgr cron
+	_EOF_
+    chmod 755 "$crondir/$tlr-upd"
+
+    break
+  done
+  if [ -z "$crondir" ] ; then
+    echo "Unable to determine cronjob type" 1>&2
+  fi
+}
+
+
+demo_db_args="[--hostsdir=path] [--usersdir=path] [--[no-]hosts] [--[no-]users]"
+demo_db() {
+  # Create a demo database...
+  local hdir="" udir="" users=false hosts=true
+  while [ $# -gt 0 ]
+  do
+    case "$1" in
+      --hostsdir=*) hdir=${1#--hostsdir=} ;;
+      --hosts=*) hdir=${1#--hosts=} ; hosts=true ;;
+      --hosts) hosts=true ;;
+      --no-hosts) hosts=false ;;
+      --usersdir=*) udir=${1#--usersdir=} ;;
+      --users=*) udir=${1#--users=} ; users=true ;;
+      --users) users=true ;;
+      --no-users) users=false ;;
+      *) break ;;
+    esac
+    shift
+  done
+
+
+  if $hosts ; then
+    [ -z "$hdir" ] && quit 20 "Must specify a hosts directory"
+    mkdir -p "$hdir"
+
+    local i
+
+    for i in camelot avalon tintagel cobernic lyonesse sarras
+    do
+      hostmgr new --clobber --output="$hdir/h_${i}.tar.gz" "$i"
+    done
+  fi
+
+  if $users ; then
+    [-z "$udir" ] && quit 22 "Must specify a user directory"
+    mkdir -p "$udir"
+
+    local u g p
+
+    for g in admins royals knights nobles commoners
+    do
+      groups_add $g || continue
+      echo "Group $g"
+    done
+
+    for ug in \
+	  "arthur:Arthur Pendragon" "morgana:Morgan Le Fey" \
+	  "guinie:Guinevere the Queen" "sancho:Sancho Panza" \
+	  "sid:Sid Bedivere" "lancelot:Sir Lancelot" \
+	  "gawain:Sir Gawain" "galahad:Sir Galahad" \
+	  "kay:Sir Kay" "percivale:Sir Percivale"
+    do
+      u=$(echo "$ug" | cut -d: -f1)
+      g=$(echo "$ug" | cut -d: -f2)
+      p=$(users_pwgen)
+
+      users_add "$u" || continue
+      users_passwd "$u" "$p"
+      users_user "$u" --gecos="$g" --home="/home/$u"
+
+      echo " $u:$g:$p"
+    done
+
+
+    groups_adduser royals arthur guinie
+    groups_adduser knights lancelot gawain galahad kay percivale
+    groups_adduser commoners sid sancho
+    groups_adduser nobles @knights @royals morgana
+    groups_adduser admins @royals
+
+    for u in arthur guinie
+    do
+      if [ ! -f $udir/u_${u}_key ] ; then
+	ssh-keygen -q -N '' -t rsa  -C "user:$u" -f "$udir/u_${u}_key"
+	mv "$udir/u_${u}_key.pub" "$TLR_DATA/users.d/$u.admpub"
+      elif [ ! -f $TLR_DATA/users.d/$u.admpub ] ; then
+	ssh-keygen -y -f "$dir/u_${u}_key" > "$TLR_DATA/users.d/$u.admpub"
+      fi
+
+      cat > $TLR_DATA/users.d/$u.map <<-EOF
+	ident_sso=$(users_pwgen)
+	social_logins='$u@the-kingdom.com'
+	EOF
+    done
+  fi
+}
+
+if [ $# -eq 0 ] ; then
+  echo "Must specify a sub-command"
+  usage
+  exit 1
+fi
+
+op="$1" ; shift
+case "$op" in
+  runpol) runpol "$@" ;;
+  paths) show_paths "$@" ;;
+  setup) setup "$@" ;;
+  demodb) demo_db "$@" ;;
+  help) usage ;;
+  *) quit 20 "Invalid op: $op" ;;
+esac
