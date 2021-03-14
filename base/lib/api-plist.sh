@@ -105,7 +105,7 @@ plst_set() {
   local n="$1" dir="$2" ext="$3" data=""; shift 3
 
   if [ -f "$dir/$n$ext" ] ; then
-    data="$(grep . "$dir/$n$ext")"
+    data="$(grep . "$dir/$n$ext" || :)"
   fi
   local otxt="$data"
   while [ $# -gt 0 ]
@@ -122,7 +122,7 @@ plst_set() {
   done
 
   if [ x"$otxt" != x"$data" ] ; then
-    echo "$data" > "$dir/$n$ext"
+    echo "$data" | (grep . || :) > "$dir/$n$ext"
   fi
 }
 
