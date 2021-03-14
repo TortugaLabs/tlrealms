@@ -171,10 +171,6 @@ users_del() {
   local n g
   for n in "$@"
   do
-    #~ for g in $(groups_usergroups --no-resolve "$n")
-    #~ do
-      #~ groups_deluser "$g" "$n"
-    #~ done
     plst_del "$n" "$users_db" $users_exts
   done
   return 0
