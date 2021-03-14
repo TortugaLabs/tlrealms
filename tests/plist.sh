@@ -41,15 +41,15 @@ xt_plist_get() {
 
   plist_setup || atf_fail "plist_setup failed"
 
-  atf_check_equal "$(plst_get "box1" "$db" .dat one four)" "1box1"
-  atf_check_equal "$(plst_get -v "box2" "$db" .cfg uno cuatro)" "uno 1box1sp"
+  atf_check_equal "1box1"	"$(xtf plst_get "box1" "$db" .dat one four)"
+  atf_check_equal "uno 1box1sp"	"$(xtf plst_get -v "box2" "$db" .cfg uno cuatro)"
 }
 
 xt_plist_lst() {
   : =descr "List property list"
 
   plist_setup || atf_fail "plist_setup failed"
-  atf_check_equal "$(plst_list "$db" $exts | wc -l)" 7
+  atf_check_equal 7	"$(xtf plst_list "$db" $exts | wc -l)"
 }
 
 xt_plist_chk() {
@@ -75,14 +75,14 @@ xt_plist_kvps() {
   for tron in abc cba dba
   do
     plst_set "box1" "$db" .dat mega $tron
-    atf_check_equal "$(plst_get "box1" "$db" .dat mega)" "$tron"
+    atf_check_equal "$tron"	"$(xtf plst_get "box1" "$db" .dat mega)"
   done
 
   plst_set "box1" "$db" .dat mega
   [ -n "$(plst_get "box1" "$db" .dat mega)" ] && atf_fail "box1:mega should be empty"
 
-  atf_check_equal $(plst_get "box1" "$db" .dat | wc -l) 3
-  atf_check_equal $(plst_get -v "box1" "$db" .dat | wc -l) 3
+  atf_check_equal 3	$(xtf plst_get "box1" "$db" .dat | wc -l)
+  atf_check_equal 3	$(xtf plst_get -v "box1" "$db" .dat | wc -l)
 }
 
 
