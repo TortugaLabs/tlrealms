@@ -7,3 +7,4 @@ test_suite('tlreamls')
 
 atf_test_program{name='plist.sh'}
 atf_test_program{name='users.sh'}
+atf_test_program{name='groups.sh'}
