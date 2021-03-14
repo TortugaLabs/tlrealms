@@ -1,0 +1,8 @@
+--
+-- Testing definitions
+--
+
+syntax(2)
+test_suite('tlreamls')
+
+atf_test_program{name='plist.sh'}
