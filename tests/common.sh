@@ -8,6 +8,6 @@ else
   exit 1
 fi
 export TLR_BASE=$(atf_get_srcdir)/../base
-export TLR_LIB=$TLR_BASE/lib
+export TLR_LIB=$TLR_BASE/lib TLR_BIN=$TLR_BASE/bin
 export ASHLIB_PATH=$TLR_LIB:$ASHLIB
 

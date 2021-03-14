@@ -1,0 +1,34 @@
+#!/bin/sh
+#
+# Main entry point for TLR tools
+#
+set -euf -o pipefail
+if [ $# -eq 0 ] ; then
+  echo "Missing sub-command" 1>&2
+  exit 2
+fi
+
+[ -z "${TLR_BASE:-}" ] && export TLR_BASE="$(dirname $(dirname $(readlink -f "$0")))"
+[ -z "${TLR_LIB:-}" ] && export TLR_LIB="$TLR_BASE/lib"
+if [ -z "${ASHLIB:-}" ] ; then
+  if [ -d "$TLR_BASE/../.ashlib" ] ; then
+    ASHLIB="$(readlink -f "$TLR_BASE/../.ashlib")"
+  elif [ -d "$TLR_BASE/ashlib" ] ; then
+    ASHLIB="$TLR_BASE/ashlib"
+  else
+    echo "Missing ASHLIB dependancy" 1>&2
+    exit 1
+  fi
+  export ASHLIB
+fi
+[ -z "${ASHLIB_PATH:-}" ] && export ASHLIB_PATH="$TLR_LIB:$ASHLIB"
+[ -z "${TLR_BIN:-}" ] && export TLR_BIN="$TLR_BASE/bin"
+
+cmd="$1" ; shift
+
+if [ ! -x "$TLR_BIN/$cmd" ] ; then
+  echo "$cmd: unknown sub-command" 1>&2
+  exit 3
+fi
+
+exec "$TLR_BIN/$cmd" "$@"
