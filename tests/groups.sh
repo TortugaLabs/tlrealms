@@ -5,33 +5,10 @@ if ! type atf_get_srcdir >/dev/null 2>&1 ; then
 fi
 
 . $(atf_get_srcdir)/common.sh
-db=$(mktemp -d)
-trap "rm -rf $db" EXIT
-#~ db=$(pwd)/data
-export TLR_DATA="$db" DOMAIN='the-kingdom'
+. $(atf_get_srcdir)/lib/data.sh
 
 include -1 api-groups.sh
 
-groups_setup() {
-  (
-    exec 1>&2
-    set -euf -o pipefail
-
-    local output=""
-    for g in admins royals knights nobles commoners soldiers
-    do
-      groups_add "$g"
-    done
-
-    groups_adduser royals arthur guinie
-    groups_adduser knights lancelot gawain galahad kay percivale
-    groups_adduser commoners sid sancho
-    groups_adduser nobles @knights @royals morgana
-    groups_adduser admins @royals sid
-    groups_adduser soldiers sid
-  )
-  return $?
-}
 
 xt_groups_add() {
   : =descr "Create a sample database"
@@ -136,7 +113,7 @@ xt_groups_writes() {
 
   (xtf groups_del labrats) || atf_fail "groups_del(labrats) : FAIL"
   (xtf groups_exists labrats) && atf_fail "groups_exists(labrats) : TRUE"
-
+  :
 }
 
 xt_groups_grdels() {
