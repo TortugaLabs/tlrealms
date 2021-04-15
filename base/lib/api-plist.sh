@@ -45,7 +45,7 @@ plst_list() {
 	  basename "$ln" "$ext"
 	done
     done
-  ) | sort -u
+  ) | sort -u | xargs
 }
 
 plst_exists() {
@@ -105,7 +105,7 @@ plst_set() {
   local n="$1" dir="$2" ext="$3" data=""; shift 3
 
   if [ -f "$dir/$n$ext" ] ; then
-    data="$(grep . "$dir/$n$ext")"
+    data="$(grep . "$dir/$n$ext" || :)"
   fi
   local otxt="$data"
   while [ $# -gt 0 ]

@@ -121,8 +121,9 @@ setup_path() {
 
 setup_args="[-v] [--data=store] [--local=store] [--sshd-config=path] [--extra-keys=path|--extra-keys-dir=dirpath]"
 setup() {
+  local etc=${ETCDIR:-/etc} var=${VARDIR:-/var}
   local data='' local='' v=true \
-	sshd_config="/etc/ssh/sshd_config" extra_keys_dir="etc/ssh/userkeys"
+	sshd_config="$etc/ssh/sshd_config" extra_keys_dir="$etc/ssh/userkeys"
   while [ $# -gt 0 ]
   do
     case "$1" in
@@ -131,7 +132,7 @@ setup() {
       --data=*) data=${1#--data=} ;;
       --local=*) local=${1#--local=} ;;
       --sshd-config=*) sshd_config=${1#--sshd-config=} ;;
-      --extra-keys-dir=*) extra_keys_dir=${1#--extra-keys-dir} ;;
+      --extra-keys-dir=*) extra_keys_dir=${1#--extra-keys-dir=} ;;
       *) break
     esac
     shift
@@ -168,7 +169,7 @@ setup() {
   sync_sshd_restart
 
   # cronjobs
-  local crondir etc=${ETCDIR:-/etc} var=${VARDIR:-/var}
+  local crondir
   for crondir in $etc/cron.hourly $etc/periodic/hourly ''
   do
     [ -z "$crondir" ] && break

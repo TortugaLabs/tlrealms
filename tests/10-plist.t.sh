@@ -31,7 +31,8 @@ done
 	&& quit 5 "plst_get returned unexpected value"
 
 cnt=7
-[ $(plst_list "$db" $exts | wc -l) -ne $cnt ] \
+#~ plst_list "$db" $exts
+[ $(plst_list "$db" $exts | wc -w) -ne $cnt ] \
 	&& quit 30 "plst_list did not return $cnt lines"
 
 plst_exists nobox  "$db" $exts \

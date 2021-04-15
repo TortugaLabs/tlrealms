@@ -118,7 +118,7 @@ sync_gen_host_keys() {
 
   for host in $(hosts_list)
   do
-    hosts_get -v --pub $host | (
+    hosts_pub -v $host | (
       fcmd=$(echo "$fcmd" | sed -e 's/<CLIENT>/'"$host"'/')
       while read -r line
       do

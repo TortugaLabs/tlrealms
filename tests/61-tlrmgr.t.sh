@@ -6,11 +6,14 @@
 export TLR_DATA=$TESTDIR/t.data/tlr TLR_LOCAL=$TESTDIR/t.data/local
 export ETCDIR=$TESTDIR/t.data/etc
 
+mkdir -p $ETCDIR/ssh
+cp data/sshd_config $ETCDIR/ssh
+
 tlrmgr runpol
 tlrmgr paths
 tlrmgr setup
 tlrmgr help
-tlrmgr demodb --hosts=$TESTDIR/t.data/hosts
+#~ tlrmgr demodb --hosts=$TESTDIR/t.data/hosts
 
 
 

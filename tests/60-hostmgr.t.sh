@@ -24,3 +24,7 @@ hostmgr set sys1 potone p1
 hostmgr get sys1 potone
 hostmgr get -v sys1 potone
 
+hostmgr cfg sys1 potwo p2
+hostmgr cfg sys1 potwo
+hostmgr cfg -v sys1 potwo
+hostmgr cfg -v sys1

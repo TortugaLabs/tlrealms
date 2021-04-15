@@ -103,6 +103,22 @@ del)
   hosts_del "$@"
   tlrmgr runpol
   ;;
+pub|cfg)
+  optv=""
+  while [ $# -gt 1 ]
+  do
+    case "$1" in
+      -v) optv="$1" ;;
+      *) break ;;
+    esac
+    shift
+  done
+  [ $# -eq 0 ] && quit 51 "Must specify host and key"
+  hosts_exists "$1" || quit 75 "$1: does not exist"
+  hosts_${op} $optv "$@"
+  ;;
+
+
 get)
   optv="" ; mode=cfg
   while [ $# -gt 1 ]

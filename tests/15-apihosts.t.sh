@@ -37,7 +37,7 @@ fi
 if try=$(hosts_namechk Hxyz'$@') ; then
   quit 31 "hosts_namechk($try) should be bad"
 fi
-if [ $(hosts_list | wc -l) -ne 5 ] ; then
+if [ $(hosts_list | wc -w) -ne 5 ] ; then
   quit 34 "hosts_list should return 5 names"
 fi
 
@@ -66,4 +66,23 @@ if [ -n "$(hosts_get tstsys3 myroles || :)" ] ; then
   quit 46 "hosts_get(tsstsys3,myroles) should return empty"
 fi
 
+if [ $(hosts_pub -v tstsys3 | wc -l) -lt 3 ] ; then
+  quit 41 "hosts_pub(-v tstsys3) was incomplete"
+fi
+hosts_cfg tstsys3 myroles "" pubkey
+if [ -n "$(hosts_cfg tstsys3 myroles || :)" ] ; then
+  quit 46 "hosts_cfg(tsstsys3,myroles) should return empty"
+fi
+hosts_cfg tstsys3 myroles "$myroles" pubkey "$pubkey"
+if [ x"$(hosts_cfg tstsys3 myroles)" != x"$myroles" ] ; then
+  quit 53 "hosts_cfg(tstsys3,myroles) != $myroles"
+fi
+if [ x"$(hosts_cfg tstsys3 pubkey)" != x"$pubkey" ] ; then
+  quit 53 "hosts_cfg(tstsys3,pubkey) != $pubkey"
+fi
+
+hosts_cfg tstsys3 myroles "" pubkey
+if [ -n "$(hosts_cfg tstsys3 myroles || :)" ] ; then
+  quit 46 "hosts_cfg(tsstsys3,myroles) should return empty"
+fi
 

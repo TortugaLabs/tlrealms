@@ -73,76 +73,15 @@ hosts_del() {
 }
 
 hosts_list() {
-  ## List all property lists in a folder
+  ## List all hosts
   ## # USAGE
-  ##   hosts_list <dir> [exts]
-  ## # OPTIONS
-  ## * dir - folder containing property lists
-  ## * exts - list of property list extensions
+  ##   hosts_list
   ## # DESC
-  ## Look in the property list directory <dir> for files with
-  ## matching the given extensions.  Returns the relevant names
-  ## without extensions.
+  ## List all defined hosts
   ##
   plst_list "$hosts_db" $hosts_exts
 }
 
-hosts_set() {
-  ## Writes values to hosts data
-  ## # USAGE
-  ##   hosts_set [--pub|--cfg] <id> [key val] or [key ''] or [key]
-  ## # OPTIONS
-  ## * --pub - modify public keys
-  ## * --cfg - modify cfg values (default)
-  ## * id - host to modify
-  ## * key - key to modify
-  ## * val - value to write to key, if '' or missing, the key is removed
-  ##
-  local ext='.cfg'
-  while [ $# -gt 0 ]
-  do
-    case "$1" in
-    --pub|-p) ext=".pub" ;;
-    --cfg|-c) ext=".cfg" ;;
-    *) break
-    esac
-    shift
-  done
-
-  local host="$1" ; shift
-
-  plst_set "$host" "$hosts_db" "$ext" "$@"
-}
-hosts_get() {
-  ## Reads values from hosts data
-  ## # USAGE
-  ##   hosts_get [-v] [--pub|--cfg] <id> [key]
-  ## # OPTIONS
-  ## * -v - return the key also
-  ## * --pub - modify public keys
-  ## * --cfg - modify cfg values (default)
-  ## * id - host name
-  ## * key - key to return
-  ## # DESC
-  ## Reads host values for the given keys.  If no key specified it lists
-  ## the keys that are defined.  If `-v` is used when no keys are
-  ## specified, it returns key values.
-  local optv='' ext='.cfg'
-  while [ $# -gt 0 ]
-  do
-    case "$1" in
-    -v) optv="$1" ;;
-    --pub|-p) ext=".pub" ;;
-    --cfg|-c) ext=".cfg" ;;
-    *) break
-    esac
-    shift
-  done
-
-  local host="$1" ; shift
-
-  plst_get $optv "$host" "$hosts_db" "$ext" "$@"
-}
 
 hosts_new() {
   ## Creates new host records
@@ -190,6 +129,73 @@ hosts_new() {
   return 0
 }
 
+hosts_pub() {
+  ## set|get pub values
+  ## # USAGE
+  ##   hosts_pub [-v] <id> [<key> [val|'' [key val]]]
+  ## OPTIONS
+  ## * id - host to lookup|modify
+  ## * key - key to lookup|modify
+  ## * val - value to write to key, if '' or missing, the key is removed
+  ## DESC
+  ## If a single key is specified, it is returned.  if one or more
+  ## key-val pairs are specified, it is changed.
+  ##
+  ## If no keys are specified, it list available keys.
+  local optv='' ext='.pub'
+  while [ $# -gt 0 ]
+  do
+    case "$1" in
+    -v) optv="$1" ;;
+    *) break
+    esac
+    shift
+  done
+  [ $# -eq 0 ] && return 54
+
+  local host="$1" ; shift
+
+  if [ $# -lt 2 ] ; then
+    plst_get $optv "$host" "$hosts_db" "$ext" "$@"
+    return $?
+  fi
+  plst_set "$host" "$hosts_db" "$ext" "$@"
+  return $?
+}
+
+hosts_cfg() {
+  ## set|get cfg values
+  ## # USAGE
+  ##   hosts_cfg [-v] <id> [<key> [val|'' [key val]]]
+  ## OPTIONS
+  ## * id - host to lookup|modify
+  ## * key - key to lookup|modify
+  ## * val - value to write to key, if '' or missing, the key is removed
+  ## DESC
+  ## If a single key is specified, it is returned.  if one or more
+  ## key-val pairs are specified, it is changed.
+  ##
+  ## If no keys are specified, it list available keys.
+  local optv='' ext='.cfg'
+  while [ $# -gt 0 ]
+  do
+    case "$1" in
+    -v) optv="$1" ;;
+    *) break
+    esac
+    shift
+  done
+  [ $# -eq 0 ] && return 54
+
+  local host="$1" ; shift
+
+  if [ $# -lt 2 ] ; then
+    plst_get $optv "$host" "$hosts_db" "$ext" "$@"
+    return $?
+  fi
+  plst_set "$host" "$hosts_db" "$ext" "$@"
+  return $?
+}
 
 #~ hosts_keytype_tag() {
   #~ case "$1" in
@@ -207,3 +213,60 @@ hosts_new() {
 #~ do
 #~ done
 
+hosts_set() {
+  ## Writes values to hosts data
+  ## # USAGE
+  ##   hosts_set [--pub|--cfg] <id> [key val] or [key ''] or [key]
+  ## # OPTIONS
+  ## * --pub - modify public keys
+  ## * --cfg - modify cfg values (default)
+  ## * id - host to modify
+  ## * key - key to modify
+  ## * val - value to write to key, if '' or missing, the key is removed
+  ##
+  local ext='.cfg'
+  while [ $# -gt 0 ]
+  do
+    case "$1" in
+    --pub|-p) ext=".pub" ;;
+    --cfg|-c) ext=".cfg" ;;
+    *) break
+    esac
+    shift
+  done
+
+  local host="$1" ; shift
+
+  plst_set "$host" "$hosts_db" "$ext" "$@"
+}
+
+hosts_get() {
+  ## Reads values from hosts data
+  ## # USAGE
+  ##   hosts_get [-v] [--pub|--cfg] <id> [key]
+  ## # OPTIONS
+  ## * -v - return the key also
+  ## * --pub - modify public keys
+  ## * --cfg - modify cfg values (default)
+  ## * id - host name
+  ## * key - key to return
+  ## # DESC
+  ## Reads host values for the given keys.  If no key specified it lists
+  ## the keys that are defined.  If `-v` is used when no keys are
+  ## specified, it returns key values.
+  local optv='' ext='.cfg'
+  while [ $# -gt 0 ]
+  do
+    case "$1" in
+    -v) optv="$1" ;;
+    --pub|-p) ext=".pub" ;;
+    --cfg|-c) ext=".cfg" ;;
+    *) break
+    esac
+    shift
+  done
+
+  local host="$1" ; shift
+
+  plst_get $optv "$host" "$hosts_db" "$ext" "$@"
+}
