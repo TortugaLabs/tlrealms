@@ -44,6 +44,9 @@ users_setup() {
       u=$(echo "$un" | cut -d: -f1)
       n=$(echo "$un" | cut -d: -f2)
       users_add --gecos="$n" --home=/home/$u $u
+
+      users_map "$u" ident_sso "$(users_pwgen)"
+      users_map "$u" social_logins "$u@yahoo.com $u@gmail.com"
     done
   )
   return $?
