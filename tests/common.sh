@@ -1,9 +1,9 @@
 #!/bin/sh
-. $(atf_get_srcdir)/lib/xatf.sh
 
 if [ -d $(atf_get_srcdir)/../.ashlib ] ; then
-  export ASHLIB=$(atf_get_srcdir)/../.ashlib
+  export ASHLIB=$(atf_get_srcdir)/../.ashlib/src/ashlib
   . $ASHLIB/ashlib.sh
+  . $(atf_get_srcdir)/../.ashlib/src/xatflib/xatf.sh
 else
   exit 1
 fi
