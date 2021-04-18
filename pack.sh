@@ -1,9 +1,9 @@
 #!/bin/sh
-
+[ $# -eq 0 ] && set - tlrealms.tar.gz
 #
 # Create base tar file
 #
-tarball="demo.tar.gz"
+tarball="$1"
 tmp1=$(mktemp -d) ; trap "rm -rf $tmp1" EXIT
 
 mkdir -p $tmp1/perms/ashlib
