@@ -1,0 +1,92 @@
+#!/bin/sh
+. $TLR_LIB/init.sh
+#
+# Host management
+#
+[ $# -eq 0 ] &&  set - list
+
+include -1 api-hosts.sh
+include -1 api-polrun.sh
+
+op="$1" ; shift
+
+case "$op" in
+list)
+  hosts_list
+  ;;
+cfg)
+  [ $# -eq 0 ] && quit 7 "Usage: $TLR_CMD cfg [-v] {host} [key [value]]"
+  hosts_cfg "$@"
+  (([ x"$1" = x"-v" ] && [ $# -gt 3 ]) || [ $# -gt 2 ]) && polrun_apply hosts || :
+  ;;
+pk)
+  [ $# -eq 0 ] && quit 7 "Usage: $TLR_CMD pk [-v] {host} [keytype [value]]"
+  hosts_pk "$@"
+  (([ x"$1" = x"-v" ] && [ $# -gt 3 ]) || [ $# -gt 2 ]) && polrun_apply hosts || :
+  ;;
+del)
+  [ $# -eq 0 ] && quit 7 "Usage: $TLR_CMD del [hosts]"
+  hosts_del "$@"
+  polrun_apply hosts || :
+  ;;
+add)
+  [ $# -lt 1 ] && quit 7 "Usage: $TLR_CMD add host [uuid <uud>]"
+  hn="$(hosts_namechk "$1")" || quit 13 "Invalid hostname: $1"
+  shift
+
+  if tty >/dev/null 2>&1 ; then
+    echo "Enter public keys..."
+  fi
+  hosts_add "$hn" "$@"
+  polrun_apply hosts || :
+  ;;
+new)
+  [ $# -eq 0 ] && quit 7 "Usage: $TLR_CMD new [--base64|-b] [host] [output]"
+  encode=true
+  while [ $# -gt 0 ]
+  do
+    case "$1" in
+      -b|--base64) encode=true ;;
+      -B|--no-base64) encode=false ;;
+      *) break ;;
+    esac
+    shift
+  done
+  [ $# -eq 0 ] && quit 12 "Must specify hostname"
+  hn="$(hosts_namechk "$1")" || quit 13 "Invalid hostname: $1"
+  [ $# -eq 2 ] && output="$2" || output=""
+
+  hosts_new "$hn" | (
+    if $encode ; then
+      exec base64
+    else
+      exec cat
+    fi
+  ) | (
+    if [ -n "$output" ] ; then
+      cat > "$output"
+    else
+      exec cat
+    fi
+  )
+  polrun_apply hosts || :
+  ;;
+help)
+  cat <<-_EOF_
+	Usage: $TLR_CMD {op} [args]
+
+	Ops:
+	- list : list hosts
+	- cfg: show|modify cfg data
+	- new : create a new host
+	- add : add host
+	- pk : show|modify public key data
+	- del : delete host
+	_EOF_
+  exit 1
+  ;;
+*)
+  quit 2 "Unknown op: $op"
+  ;;
+esac
+

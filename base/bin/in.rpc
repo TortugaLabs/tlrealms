@@ -1,0 +1,135 @@
+#!/bin/sh
+. $TLR_LIB/init.sh
+#
+# Provide RPC in-bound functionality
+#
+include -1 api-sshutil.sh
+include -1 api-polrun.sh
+
+if [ -z "${SSH_ORIGINAL_COMMAND:-}" ] ; then
+  [ $# -eq 0 ] && exit 0 # No-op...
+
+  while [ $# -gt 0 ]
+  do
+    case "$1" in
+      --*=*) export "${1#--}" ;;
+      *) break ;;
+    esac
+    shift
+  done
+  export SSH_ORIGINAL_COMMAND="$*" # Simulate a SSH forced command
+fi
+
+while :
+do
+  arg0=$(basename "$(echo "$SSH_ORIGINAL_COMMAND" | xargs | (read a j ; echo "$a" ))")
+  argX=$(echo "$SSH_ORIGINAL_COMMAND" | xargs | (read a j ; echo "$j" ))
+  if ([ x"$arg0" = x"$TLR_EXE" ] || [ x"$arg0" = x"$TLR_CMD" ]) ; then
+    # Weird stuff can happen sometines
+    SSH_ORIGINAL_COMMAND="$argX"
+    continue
+  fi
+  break
+done
+
+set - $argX
+
+case "$arg0" in
+rsync)
+  sync_rpc_check "$@" || quit 5 "Invalid rsync call"
+  sync_rpc_run "$3"
+  ;;
+ping)
+  uptime
+  ;;
+dump)
+  encode=true
+  while [ $# -gt 0 ]
+  do
+    case "$1" in
+      -b|--base64) encode=true ;;
+      -B|--no-base64) encode=false ;;
+      *) break ;;
+    esac
+    shift
+  done
+  if $encode ; then
+    sync_dump_s | base64
+  else
+    sync_dump_s
+  fi
+  ;;
+chpw)
+  [ $# -ne 1 ] && quit 58 "must specify the user to update"
+
+  user="$1"
+  users_exists "$user" || quit 64 "$user: does not exist"
+  read cpwd || exit 66
+  read npwd || exit 67
+  # test password
+  users_pwck "$user" "$cpwd" || quit 76 "$user: permission denied"
+
+  polrun_pwck "$npwd" || quit 71 "$user: bad password"
+  polrun_perms users pwch "$user" "$npwd" || quit 76 "$user: permission denied"
+
+  # Updating credentials
+  users_passwd --set "$user" "$npwd"
+  echo "$user: password changed"
+  polrun_apply users || :
+  exit 0
+  ;;
+ckfn)
+  [ $# -ne 1 ] && quit 81 "Must specify user"
+  user="$1"
+  users_exists "$user" || quit 64 "$user: does not exist"
+  users_cfg -v "$user"
+  exit 0
+  ;;
+chfn)
+  [ $# -ne 1 ] && quit 58 "must specify the user to update"
+  user="$1"
+  users_exists "$user" || quit 64 "$user: does not exist"
+  read cpwd || exit 66
+  # test password
+  users_pwck "$user" "$cpwd" || quit 76 "$user: permission denied"
+
+  set - "$user"
+
+  while read k v
+  do
+    case "$k" in
+    pw_shell)
+      polrun_perms users chshell "$user" "$v" || quit 76 "$user: permission denied"
+      set - "$@" pw_shell "$v"
+      ;;
+    gecos)
+      polrun_perms users chgecos "$user" "$v" || quit 76 "$user: permission denied"
+      set - "$@" gecos "$v"
+      ;;
+    *)
+      quit 88 "$user: unable to change attribute $k"
+      ;;
+    esac
+  done
+  [ $# -gt 1 ] && users_cfg "$@"
+  polrun_apply users || :
+  ;;
+help)
+  cat <<-_EOF_
+	Usage: $TLR_CMD {op} [args]
+
+	Ops:
+	- rsync : fetch data
+	- dump : dump data as a tarball
+	- ping : hello
+	- chpw user : change users password
+	- chfn [--shell=x] [--gecos=x] user : change shell and/or gecos fields
+	- ckfn user : show shell and gecos field for user
+_EOF_
+  exit 1
+  ;;
+*)
+  quit 2 "Unknown op: $arg0"
+  ;;
+esac
+

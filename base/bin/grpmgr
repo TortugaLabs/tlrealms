@@ -1,0 +1,157 @@
+#!/bin/sh
+. $TLR_LIB/init.sh
+#
+# Group management
+#
+[ $# -eq 0 ] &&  set - list
+
+include -1 api-users.sh
+include -1 api-groups.sh
+include -1 api-polrun.sh
+
+check_members() {
+  local u c=""
+  for u in "$@"
+  do
+    if [ x"${u:0:1}" = x"@" ] ; then
+      # This is a group reference
+      if ! groups_exists "${u:1}" ; then
+	c="$c $u"
+      fi
+    else
+      if ! users_exists "$u" ; then
+	c="$c $u"
+      fi
+    fi
+  done
+  [ -z "$c" ] && return 0
+  echo "Unknown references:$c" 1>&2
+  return 1
+}
+
+op_add() {
+  local gid="" grname=""
+  [ $# -eq 0 ] && quit 10 "Usage: $TLR_CMD add [--gid=GID] group"
+  while [ $# -gt 0 ]
+  do
+    case "$1" in
+      --gid=*) gid="$1" ;;
+      *) grname="$1" ;;
+    esac
+    shift
+  done
+  [ -z "$grname" ] && quit 10 "Must specify group name to create"
+  groups_exists "$grname" && quit 11 "$grname: group already exists"
+  groups_add $gid "$grname"
+  polrun_apply groups || :
+}
+
+op_adduser() {
+  [ $# -lt 2 ] && quit 10 "Usage: $TLR_CMD adduser group members"
+  local grname="$1" ; shift
+  groups_exists "$grname" || quit 11 "$grname: not found"
+  check_members "$@" || exit 66
+  groups_adduser "$grname" "$@"
+  polrun_apply groups || :
+}
+
+op_deluser() {
+  [ $# -lt 2 ] && quit 10 "Usage: $TLR_CMD deluser group members"
+  local grname="$1" ; shift
+  groups_exists "$grname" || quit 11 "$grname: not found"
+  groups_deluser "$grname" "$@"
+  polrun_apply groups || :
+}
+
+op_del() {
+  [ $# -eq 0 ] && quit 10 "Usage: $TLR_CMD del group"
+  groups_del "$@"
+  polrun_apply groups || :
+}
+
+op_gid() {
+  [ $# -eq 0 ] && quit 10 "Usage: $TLR_CMD gid [--gid=GID] group"
+  local gid="" grname=""
+  while [ $# -gt 0 ]
+  do
+    case "$1" in
+      --gid=*) gid="${1#--gid=}" ;;
+      *) grname="$1" ;;
+    esac
+    shift
+  done
+  [ -z "$grname" ] && quit 10 "Must specify group name to create"
+  groups_exists "$grname" || quit 11 "$grname: not found"
+  if [ -z "$gid" ] ; then
+    groups_gid "$grname"
+  else
+    groups_gid "$grname" "$gid"
+  fi
+  polrun_apply groups || :
+}
+
+op_members() {
+  [ $# -eq 0 ] && quit 10 "Usage: $TLR_CMD group [members]"
+  local grname="$1" ; shift
+  groups_exists "$grname" || quit 11 "$grname: not found"
+  if [ $# -eq 0 ] ; then
+    groups_members "$grname"
+  else
+    check_members "$@" || exit 66
+    groups_members "$grname" "$@"
+    polrun_apply groups || :
+  fi
+}
+op_usergroups() {
+  [ $# -ne 1 ] && quit 10 "Usage: $TLR_CMD usergroups {user}"
+  groups_usergroups "$1"
+}
+
+op="$1" ; shift
+
+case "$op" in
+list)
+  groups_list
+  ;;
+add)
+  op_add "$@"
+  ;;
+adduser)
+  op_adduser "$@"
+  ;;
+deluser)
+  op_deluser "$@"
+  ;;
+del)
+  op_del "$@"
+  ;;
+gid)
+  op_gid "$@"
+  ;;
+members|mem)
+  op_members "$@"
+  ;;
+usergroups|ug)
+  op_usergroups "$@"
+  ;;
+help)
+  cat <<-_EOF_
+	Usage: $TLR_CMD {op} [args]
+
+	Ops:
+	- list : list groups
+	- add : create a group
+	- adduser : add a user|group to a group
+	- deluser : remove user|group from a group
+	- del : delete group
+	- gid : show group's gid, or set a group's gid
+	- members : show group members or set group's membership
+	- usergroups : list the groups that a user belongs to
+	_EOF_
+  exit 1
+  ;;
+*)
+  quit 2 "Unknown op: $op"
+  ;;
+esac
+

@@ -1,0 +1,94 @@
+#!/bin/sh
+. $TLR_LIB/init.sh
+#
+# File generation utilities
+#
+[ $# -eq 0 ] &&  set - help
+
+include -1 api-shpwd.sh
+include -1 api-htfiles.sh
+include -1 api-sshutil.sh
+
+op="$1" ; shift
+
+case "$op" in
+users)
+  [ $# -eq 0 ] && set - --passwd --shadow
+  shpwd_gen_userfiles "$@"
+  ;;
+groups)
+  [ $# -eq 0 ] && set - --group --gshadow
+  shpwd_gen_groupfiles "$@"
+  ;;
+htpasswd)
+  if [ $# -eq 0 ] ; then
+    htfile_gen_pwds htpasswd
+  else
+    htfile_gen_pwds htpasswd | fixfile "$@"
+  fi
+  ;;
+htdigest)
+  if [ $# -eq 0 ] ; then
+    htfile_gen_pwds htdigest
+  else
+    htfile_gen_pwds htdigest | fixfile "$@"
+  fi
+  ;;
+htgroup)
+  if [ $# -eq 0 ] ; then
+    htfile_gen_grps
+  else
+    htfile_gen_grps | fixfile "$@"
+  fi
+  ;;
+nginx-grps)
+  if [ $# -eq 0 ] ; then
+    echo "Must specify a directory" 1>&2
+    exit 1
+  fi
+  mkdir -p "$1"
+  nginx_gen_grps htpasswd "$@"
+  ;;
+ident-sso)
+  if [ $# -eq 0 ] ; then
+    htfile_gen_map ident_sso
+  else
+    htfile_gen_map ident_sso | fixfile "$@"
+  fi
+  ;;
+social-map)
+  if [ $# -eq 0 ] ; then
+    htfile_gen_map social_logins
+  else
+    htfile_gen_map social_logins | fixfile "$@"
+  fi
+  ;;
+host-keys)
+  if [ $# -eq 0 ] ; then
+    sync_gen_host_keys
+  else
+    sync_gen_host_keys | fixfile "$@"
+  fi
+  ;;
+help)
+  cat <<-_EOF_
+	Usage: $TLR_CMD {op} [args]
+
+	Ops:
+	  - htpasswd [options] [output]: generate httpd password file
+	  - htgroup [options] [output]: generate httpd group file
+	  - htdigest [options] [output]: generate httpd digest authentication password file
+	  - nginx-grps [outdir] [options]: generate nginx group files
+	  - ident-sso [options] [output]: generate ident-sso map file
+	  - social-map [options] [output]: generate social logins map file
+	  - users : generate shadow and passwd files
+	  - groups : generate group and gshadow files
+	  - host-keys : authorized keys
+	_EOF_
+  exit 1
+  ;;
+*)
+  quit 2 "Unknown op: $op"
+  ;;
+esac
+

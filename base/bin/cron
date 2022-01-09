@@ -1,0 +1,43 @@
+#!/bin/sh
+. $TLR_LIB/init.sh
+include -1 api-polrun.sh
+#
+# cron script
+#
+randomize=""
+stdio=false
+
+cron_main() {
+  if [ $randomize -gt 0 ] ; then
+    randomize=$(expr $RANDOM % $randomize)
+    echo "Sleeping for $randomize seconds..."
+    sleep $randomize
+  fi
+  polrun_apply cron || :
+}
+
+while [ $# -gt 0 ]
+do
+  case "$1" in
+    --no-randomize) randomize=0 ;;
+    --randomize=*) randomize=${1#--randomize=} ;;
+    --stdio) stdio=true ;;
+    --syslog) stdio=false ;;
+    *) break ;;
+  esac
+  shift
+done
+if [ -z "$randomize" ] ; then
+  if is_master ; then
+    randomize=0
+  else
+    randomize=3600
+  fi
+fi
+
+exec </dev/null
+if $stdio ; then
+  cron_main "$@"
+else
+  cron_main "$@" 2>&1 | logger -t TLRcron
+fi

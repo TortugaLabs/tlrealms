@@ -1,0 +1,140 @@
+#!/bin/sh
+. $TLR_LIB/init.sh
+#
+# RPC calls
+#
+[ $# -eq 0 ] &&  set - help
+include -1 api-sshutil.sh
+
+op="$1" ; shift
+
+case "$op" in
+dump)
+  encode="--base64"
+  master=""
+  while [ $# -gt 0 ]
+  do
+    case "$1" in
+      -b|--base64|-B|--no-base64) encode="$1" ;;
+      --master=*) master=${1#--master=} ;;
+      *) break ;;
+    esac
+    shift
+  done
+  if [ -z "$master" ] ; then
+    [ -z "${TLR_MASTER:-}" ] && quit 10 "No TLR_MASTER defined"
+    master="$TLR_MASTER"
+  fi
+  [ $# -ne 0 ] && quit 33 "Usage: $TLR_CMD $op [--base64|--no-base64] [--master=master]"
+  sync_dump_c $encode --dump --master="$master"
+  ;;
+load)
+  encode="--no-base64"
+  v=""
+  master=""
+  while [ $# -gt 0 ]
+  do
+    case "$1" in
+      -b|--base64|-B|--no-base64) encode="$1" ;;
+      --master=*) master=${1#--master=} ;;
+      *) break ;;
+    esac
+    shift
+  done
+  if [ -z "$master" ] ; then
+    [ -z "${TLR_MASTER:-}" ] && quit 10 "No TLR_MASTER defined"
+    master="$TLR_MASTER"
+  fi
+  [ $# -gt 1 ] && quit 33 "Usage: $TLR_CMD $op [--base64|--no-base64] [--master=master] [outdir]"
+
+  sync_dump_c $encode $v --extract --master="$master" "$@"
+  ;;
+rsync)
+  if [ $# -eq 0 ] ; then
+    [ -z "${TLR_MASTER:-}" ] && quit 10 "No TLR_MASTER defined"
+    set - $TLR_MASTER
+  elif [ $# -gt 1 ] ; then
+    echo "Usage: $TLR_CMD $op [master]"
+  fi
+  sync_fetch "$@"
+  ;;
+chpw)
+  [ -z "${TLR_MASTER:-}" ] && quit 10 "No TLR_MASTER defined"
+  [ $# -ne 1 ] && quit 56 "Must specify user name"
+  prompt=":"
+  if tty >/dev/null 2>&1 ; then
+    stty -echo
+    trap "stty echo" EXIT
+    prompt="echo"
+  fi
+  $prompt "WARNING: In general it is not recommended to run this command directly"
+  $prompt -n "Current password: "
+  read cpwd
+  $prompt -n "New password: "
+  read npwd
+
+  sync_ssh_cmd $TLR_MASTER chpw "$1" <<-_EOF_
+	$cpwd
+	$npwd
+	_EOF_
+  ;;
+ckfn)
+  [ -z "${TLR_MASTER:-}" ] && quit 10 "No TLR_MASTER defined"
+  [ $# -ne 1 ] && quit 58 "must specify the user to check"
+  user="$1"
+  sync_ssh_cmd $TLR_MASTER ckfn "$user"
+  ;;
+chfn)
+  [ -z "${TLR_MASTER:-}" ] && quit 10 "No TLR_MASTER defined"
+  shell=""
+  gecos=""
+  while [ $# -gt 0 ]
+  do
+    case "$1" in
+    --shell=*) shell="${1#--shell=}" ;;
+    --gecos=*) gecos="${1#--gecos=}" ;;
+    *) break
+    esac
+    shift
+  done
+  [ -z "$shell" ] && [ -z "$gecos" ] && quit 89 "nothing to change"
+  [ $# -ne 1 ] && quit 58 "must specify the user to update"
+  user="$1"
+  prompt=":"
+  if tty >/dev/null 2>&1 ; then
+    stty -echo
+    trap "stty echo" EXIT
+    prompt="echo"
+  fi
+
+  $prompt "WARNING: In general it is not recommended to run this command directly"
+  $prompt -n "$user's password: "
+  read cpwd
+
+  (
+    echo "$cpwd"
+    if [ -n "$shell" ] ; then
+      echo "pw_shell $shell"
+    fi
+    if [ -n "$gecos" ] ; then
+      echo "gecos $gecos"
+    fi
+  ) | sync_ssh_cmd $TLR_MASTER chfn "$user"
+  ;;
+help)
+  cat <<-_EOF_
+	Usage: $TLR_CMD {op} [args]
+
+	Ops:
+	- rsync : rsync data from master
+        - dump [-b]: dump data from master as tarball
+        - chpw user: change password
+        - chfn [--shell=xxx] [--gecos=xxx] user : change shell|gecos  data
+	_EOF_
+  exit 1
+  ;;
+*)
+  quit 2 "Unknown op: $op"
+  ;;
+esac
+

@@ -1,0 +1,55 @@
+#!/bin/sh
+. $TLR_LIB/init.sh
+
+if ([ -n "${DISPLAY:-}" ] && type wish >/dev/null 2>&1) ; then
+  # We are in a GUI environment with tcl/available...
+  exec wish $TLR_LIB/chfn.tk "$TLR_BIN"
+  exit 7
+fi
+
+if [ $(id -u) -eq 0 ] ; then
+  ([ -n "${SUDO_UID:-}" ] && [ -n "${SUDO_USER:-}" ]) || quit 4 "Must run under SUDO"
+else
+  ([ -n "${TLR_BIN:-}" ] && [ -n "${TLR_EXE:-}" ]) || quit 5 "Environment error: Unable to determine TLR_BIN/TLR_EXE"
+  exec sudo "$TLR_BIN/$TLR_EXE" chfn "$@"
+  exit 8
+fi
+
+[ $# -eq 0 ] && quit 0 "Usage: $TLR_EXE $TLR_CMD --shell=new-shell --gecos=data"
+
+#
+# User interface for updating shell and gecos data
+#
+shell=""
+gecos=""
+while [ $# -gt 0 ]
+do
+  case "$1" in
+  --shell=*) shell="${1#--shell=}" ;;
+  --gecos=*) gecos="${1#--gecos=}" ;;
+  *) break
+  esac
+  shift
+done
+[ -z "$shell" ] && [ -z "$gecos" ] && quit 89 "nothing to change"
+
+if tty >/dev/null 2>&1 ; then
+  stty -echo
+  trap "stty echo" EXIT
+  echo -n "$SUDO_USER's password: "
+  read cpwd ; echo ''
+else
+  exec 3>&2
+  exec 2>&1
+  read cpwd
+fi
+
+set - x ; shift
+[ -n "$shell" ] && set - "$@" --shell="$shell"
+[ -n "$gecos" ] && set - "$@" --gecos="$gecos"
+
+$TLR_BIN/$TLR_EXE rpc chfn "$@" $SUDO_USER <<-_EOF_
+$cpwd
+_EOF_
+
+$TLR_BIN/$TLR_EXE cron --no-randomize

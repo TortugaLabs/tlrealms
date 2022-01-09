@@ -1,0 +1,50 @@
+#!/bin/sh
+. $TLR_LIB/init.sh
+
+if ([ -n "${DISPLAY:-}" ] && type wish >/dev/null 2>&1) ; then
+  # We are in a GUI environment with tcl/available...
+  exec wish $TLR_LIB/passwd.tk
+  exit 7
+fi
+
+
+if [ $(id -u) -eq 0 ] ; then
+  ([ -n "${SUDO_UID:-}" ] && [ -n "${SUDO_USER:-}" ]) || quit 4 "Must run under SUDO"
+else
+  ([ -n "${TLR_BIN:-}" ] && [ -n "${TLR_EXE:-}" ]) || quit 5 "Environment error: Unable to determine TLR_BIN/TLR_EXE"
+  exec sudo "$TLR_BIN/$TLR_EXE" chpw
+  exit 8
+fi
+
+#
+# User interface for password changes
+#
+if tty >/dev/null 2>&1 ; then
+  echo "Changing password for $SUDO_USER"
+  stty -echo
+  trap "stty echo" EXIT
+  echo -n "Current password: "
+  read cpwd ; echo ''
+  echo -n "New password: "
+  read npwd ; echo ''
+  echo -n "Confirm new password: "
+  read again ; echo ''
+  [ x"$npwd" != x"$again" ] && quit 23 "Unable to confirm new password"
+else
+  exec 3>&2
+  exec 2>&1
+
+  read cpwd
+  read npwd
+fi
+
+# TODO: Check if password is good or not
+
+
+$TLR_BIN/$TLR_EXE rpc chpw $SUDO_USER <<-_EOF_
+$cpwd
+$npwd
+_EOF_
+
+$TLR_BIN/$TLR_EXE cron --no-randomize
+

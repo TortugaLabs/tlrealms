@@ -1,0 +1,20 @@
+--
+-- Testing definitions
+--
+
+syntax(2)
+test_suite('tlreamls')
+
+atf_test_program{name='plist.sh'}
+atf_test_program{name='users.sh'}
+atf_test_program{name='groups.sh'}
+atf_test_program{name='usrmgr.sh'}
+atf_test_program{name='grpmgr.sh'}
+atf_test_program{name='mkpasswd.sh'}
+atf_test_program{name='shpwd.sh'}
+atf_test_program{name='htfiles.sh'}
+atf_test_program{name='hosts.sh'}
+atf_test_program{name='hostmgr.sh'}
+atf_test_program{name='sshutil.sh'}
+atf_test_program{name='rpc1.sh'}
+atf_test_program{name='pwck.sh'}

@@ -1,0 +1,218 @@
+#!/usr/bin/env wish
+#
+# GUI for changing gecos data
+#
+proc run_cmd {cmd input} {
+  puts "CMD: $cmd"
+  if {[catch {open "| $cmd" r+} chan]} {
+    return [list error "exec: $chan"]
+  }
+  puts $chan $input
+  flush $chan
+  chan close $chan write
+
+  set buf [read $chan]
+  puts $buf
+
+  if {[catch {close $chan} msg]} {
+    puts "ERROR: $msg"
+    return [list "ERROR: $msg" $buf]
+  }
+  return [list ok $buf]
+}
+
+proc read_user {user tl} {
+  global env
+  foreach {rc cfgv} [run_cmd "sudo $env(TLR_BIN)/$env(TLR_EXE) rpc ckfn $user 2>/dev/null" {} ] break
+
+  puts [list $rc $cfgv]
+
+  if {$rc != "ok"} {
+    tk_messageBox \
+      -parent $tl \
+      -icon error \
+      -message [_ "Unable to read finger data"] \
+      -title [_ "TL change data"] \
+      -type ok
+    exit 1
+  }
+  foreach line [split $cfgv "\n"] {
+    set l [split $line " "]
+    set k [lindex $line 0]
+    set v [join [lrange $line 1 end] " "]
+    set res($k) $v
+  }
+  return [array get res]
+}
+
+
+#~ proc rpc_passwd {user cpwd npwd} {
+  #~ global env
+  #~ return [run_cmd  \
+	#~ "env DISPLAY= $env(TLR_BIN)/$env(TLR_EXE) passwd" \
+	#~ [format "%s\n%s\n" $cpwd $npwd]]
+#~ }
+
+proc _ {msg args} {
+  return [format "$msg" {*}$args]
+}
+
+proc cancel_chfn {w} {
+  exit 0
+}
+
+
+
+proc tk_login2 {w user title} {
+  toplevel $w -borderwidth 10
+  wm title $w $title
+
+  set ::_username $user
+
+  # change the following to 'wm resizable $w 0 0' to prevent resizing
+  wm resizable $w 1 0
+  wm protocol $w WM_DELETE_WINDOW {set _res {}}
+  label  $w.u -text "User name:"
+  entry  $w.user -textvar _username -state readonly
+  label  $w.p -text "Password:"
+  entry  $w.pass -show * -textvar _password
+  button $w.ok -text OK -width 8 -command {set _res [list $_username $_password]}
+  button $w.cancel -text Cancel -width 8 -command {set _res {}}
+  grid   $w.u $w.user -     -         -sticky news
+  grid   $w.p $w.pass -     -         -sticky news
+  grid   rowconfigure $w 10 -minsize 20
+  grid   x    x       $w.ok $w.cancel -sticky news -row 11 -padx 2 -pady 2
+  grid columnconfigure $w 1 -weight 1
+
+  bind $w <Return> [list $w.ok invoke]
+  bind $w <Escape> [list $w.cancel invoke]
+  raise $w
+  grab set $w
+
+  focus $w.pass
+
+  vwait _res
+  destroy $w
+  unset ::_username ::_password
+  return $::_res
+}
+proc ok_chfn {w user} {
+  set tl $w
+  if {$w == "."} { set w "" }
+
+  # Check if there are changes
+  array set udat [read_user $user .]
+  set args [list]
+  if {$::_gecos != $udat(gecos)} {
+    lappend args "\"--gecos=$::_gecos\""
+  }
+  if {$::_shells != $udat(pw_shell)} {
+    lappend args "--shell=$::_shells"
+  }
+  if {[llength $args] == 0} {
+    tk_messageBox \
+      -parent $tl \
+      -icon info \
+      -message [_ "No data has been changed"] \
+      -title [_ "TL change data"] \
+      -type ok
+    exit 0
+  }
+
+  # Ask for the user password
+  set passwd {}
+  foreach {_ passwd} [tk_login2 ${w}.dlg $user "Enter password"] break
+  if {$passwd == ""} return
+
+  global env
+  set cmd "env DISPLAY= $env(TLR_BIN)/$env(TLR_EXE) chfn"
+  foreach v $args {
+    append cmd " " $v
+  }
+  append cmd " " $user
+  #~ append cmd " 2>/dev/null"
+
+  puts $cmd
+  foreach {res msg} [run_cmd $cmd "$passwd\n\n"] break
+  puts $msg
+  if {$res == "ok"} {
+    tk_messageBox \
+      -parent $tl \
+      -icon info \
+      -message [_ "Data has been changed"] \
+      -title [_ "TL change data"] \
+      -type ok
+    exit 0
+  } else {
+    tk_messageBox \
+      -parent $tl \
+      -icon info \
+      -message [_ "Error changing data\n%s" $msg] \
+      -title [_ "TL change data"] \
+      -type ok
+  }
+}
+
+proc setup {w user} {
+  set tl $w
+  if {$w == "."} { set w "" }
+
+  wm title $tl [_ "Change data for: %1\$s" $user]
+  wm resizable $tl 0 0
+  wm protocol $tl WM_DELETE_WINDOW [list $w.cancel invoke]
+
+  label $w.u -text [_ "User name:"]
+  entry $w.user -textvar _username -state readonly
+
+  label $w.ge -text [_ "GECOS: "]
+  entry $w.egecos -textvar _gecos
+
+  label $w.sh -text [_ "shell: "]
+  if {[catch {open "/etc/shells" "r"} fp]} {
+    set shlist [list "/bin/sh" "/bin/bash"]
+  } else {
+    set shlist [list]
+    while {[gets $fp line] >= 0} {
+      if {[string match "/usr/bin/*" $line]} continue
+      lappend shlist [string trim $line]
+    }
+    close $fp
+  }
+  tk_optionMenu $w.shells _shells {*}$shlist
+
+  array set udat [read_user $user .]
+  set ::_gecos $udat(gecos)
+  set ::_shells $udat(pw_shell)
+
+  set ::_username $user
+
+  frame $w.okcancel
+
+  button $w.ok -text OK -command [list ok_chfn $tl $user]
+  button $w.cancel -text Cancel -command [list cancel_chfn $w]
+
+  grid   $w.u  $w.user  	-sticky nws
+  grid   $w.ge $w.egecos 	-sticky nws
+  grid	 $w.sh $w.shells	-sticky nws
+  grid   $w.okcancel - 		-sticky news -pady 5 -padx 5
+
+  pack $w.ok $w.cancel -in $w.okcancel -side left -padx 5
+
+  bind $tl <Return> [list $w.ok invoke]
+  bind $tl <Escape> [list $w.cancel invoke]
+  raise $tl
+  grab set $tl
+  focus -force $w.egecos
+
+}
+
+option add *Font "Helvetica 11" widgetDefault
+option add *Button.font "Helvetica 11 bold" widgetDefault
+
+set scriptdir [file dirname [info script]]
+set appname [file root [tk appname]]
+catch {option readfile [file join $scriptdir $appname.opt] startup}
+catch {option readfile [file join $env(HOME) ".$appname.opt"] user}
+
+setup . $tcl_platform(user)
+

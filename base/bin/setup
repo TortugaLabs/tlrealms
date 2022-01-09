@@ -1,0 +1,201 @@
+#!/bin/sh
+. $TLR_LIB/init.sh
+#
+# Setup
+#
+[ $# -eq 0 ] &&  set - help
+[ -z "${TLR_ETC:-}" ] && export TLR_ETC=/etc
+[ -z "${BINDIR:-}" ] && export BINDIR=/usr/local/bin
+
+include -1 solv_ln.sh
+include -1 fixfile.sh
+
+init_cfg=false
+setup_data=false ; init_data=false ; data_dir="" ; demo_data=false
+setup_local=false ; local_dir=""
+setup_cron=""
+setup_sudo="" ; sudocmd="$TLR_BIN/$TLR_EXE chpw, $TLR_BIN/$TLR_EXE chfn *, $TLR_BIN/$TLR_EXE rpc ckfn *"
+setup_startup=""
+setup_sshd=false
+sshdcfg=$TLR_ETC/ssh/sshd_config
+
+while [ $# -gt 0 ]
+do
+  case "$1" in
+    --init-cfg) init_cfg=true ;;
+    --data) setup_data=true ; data_dir="" ;;
+    --data=*) setup_data=true ; data_dir=${1#--data=} ;;
+    --demo-data) demo_data=true ;;
+    --local) setup_local=true ; local_dir="" ;;
+    --local=*) setup_local=true ; local_dir=${1#--local=} ;;
+    --sudo) setup_sudo=${GNAME_USERS:-_users} ;;
+    --sudo=*) setup_sudo=${1#--sudo=} ;;
+    --sudocmd=*) sudocmd=${1#--sudocmd=} ;;
+    --cron=*) setup_cron=${1#--cron=} ;;
+    --cron)
+      if [ -d $TLR_ETC/cron.daily ] ; then
+        setup_cron=$TLR_ETC/cron.daily
+      elif [ -d $TLR_ETC/periodic/daily ] ; then
+        setup_cron=$TLR_ETC/periodic/daily
+      else
+        quit 8 "Unable to determine cron immplementation"
+      fi
+      ;;
+    --startup=*) setup_startup=${1#--startup=} ;;
+    --startup)
+      if [ -d $TLR_ETC/local.d ] ; then
+        setup_startup=$TLR_ETC/local.d
+      elif [ -f $TLR_ETC/rc.local ] ; then
+        setup_startup=$TLR_ETC/rc.local
+      fi
+      ;;
+    --sshd) setup_sshd=true ;;
+    --sshd=*) setup_sshd=true ; sshdcfg=${1#--sshd=} ;;
+    help|--help)
+      cat <<-_EOF_
+	Usage: $TLR_CMD {op} [args]
+
+	Ops:
+	- help : this text
+	_EOF_
+      exit 1
+      ;;
+    *)
+      echo "Unknown option: $1"
+      exit 2
+  esac
+  shift
+done
+
+re_link() {
+  local target="$1" link="$2"
+
+  target=$(readlink -f "$target")
+  link=$(readlink -f "$link")
+
+  relink=$(solv_ln "$target" "$link")
+  rm -f "$link"
+  ln -s "$relink" "$link"
+}
+
+mkdir_data=false
+if $setup_data ; then
+  [ -L "$TLR_ETC/tlr" ] && rm -f "$TLR_ETC/tlr"
+  if [ -n "$data_dir" ] ; then
+    [ -L "$data_dir" ] && rm -f "$data_dir"
+    [ -e "$data_dir" ] && rm -rf "$data_dir"
+    re_link "$data_dir" "$TLR_ETC/tlr"
+  else
+    data_dir="$TLR_ETC/tlr"
+  fi
+  if [ ! -d "$data_dir" ] ; then
+    mkdir_data=true
+    mkdir -p "$data_dir"
+  fi
+fi
+
+if ($demo_data || $mkdir_data) ; then
+  cp $TLR_LIB/data/settings.sh $data_dir/settings.sh
+  cp $TLR_LIB/data/secrets.sh $data_dir/secrets.sh ; chmod 600 $data_dir/secrets.sh
+  > $data_dir/admin_keys
+
+  mkdir -p $data_dir/policy.d
+  for polsrc in $(find $TLR_LIB/data -name 'pol-*.sh')
+  do
+    pol=$(basename "$polsrc" | sed -e 's/^pol-//')
+    cp "$polsrc" "$data_dir/policy.d/$pol"
+  done
+  for d in users groups hosts
+  do
+    mkdir -p $data_dir/$d.d
+  done
+fi
+
+if $setup_local ; then
+  # - set-up tlr_local
+  [ -L "$TLR_ETC/tlr-local" ] && rm -f "$TLR_ETC/tlr-local"
+  if [ -n "$local_dir" ] ; then
+    [ -L "$local_dir" ] && rm -f "$local_dir"
+    [ -e "$local_dir" ] && rm -rf "$local_dir"
+    re_link "$local_dir" "$TLR_ETC/tlr-local"
+  else
+    local_dir="$TLR_ETC/tlr-local"
+  fi
+  if [ ! -d "$local_dir" ] ; then
+    mkdir -p "$local_dir"
+  fi
+fi
+
+if $init_cfg ; then
+  cp $TLR_LIB/data/tlr.cfg $TLR_ETC/tlr.cfg
+fi
+
+if $demo_data ; then
+  include -1 api-users.sh api-groups.sh
+
+  for un in \
+          "arthur:Arthur Pendragon" "morgana:Morgan Le Fey" \
+          "guinie:Guinevere the Queen" "sancho:Sancho Panza" \
+          "sid:Sid Bedivere" "lancelot:Sir Lancelot" \
+          "gawain:Sir Gawain" "galahad:Sir Galahad" \
+          "kay:Sir Kay" "percivale:Sir Percivale"
+  do
+    u=$(echo "$un" | cut -d: -f1)
+    n=$(echo "$un" | cut -d: -f2)
+    users_add --gecos="$n" --home=/home/$u $u
+    users_map "$u" ident_sso "$(users_pwgen)"
+    users_map "$u" social_logins "$u@yahoo.com $u@gmail.com"
+  done
+  for g in admins royals knights nobles commoners soldiers
+  do
+    groups_add "$g"
+  done
+
+  groups_adduser royals arthur guinie
+  groups_adduser knights lancelot gawain galahad kay percivale
+  groups_adduser commoners sid sancho
+  groups_adduser nobles @knights @royals morgana
+  groups_adduser admins @royals sid
+  groups_adduser soldiers sid
+fi
+
+if [ -n "$setup_sudo" ] ; then
+  if [ -d $TLR_ETC/sudoers.d ] ; then
+    (fixfile --mode=440 $TLR_ETC/sudoers.d/tlr-chxx || :)<<-_EOF_
+	# allow users to change passwords
+	%$setup_sudo ALL=(ALL) NOPASSWD: $sudocmd
+	_EOF_
+  fi
+fi
+
+if [ -n $setup_cron ] ; then
+  (fixfile --mode=755 $setup_cron/tlr.cron || :) <<-_EOF_
+	$BINDIR/tlr cron
+	_EOF_
+fi
+
+if [ -n "$setup_startup" ] ; then
+  if [ -d "$setup_startup" ] ; then
+    type rc-update && rc-update add local
+    (fixfile --mode=755 $setup_startup/tlr.start || :) <<-_EOF_
+	$BINDIR/tlr cron --no-randomize
+	_EOF_
+  elif [ -f "$setup_startup" ] ; then
+    (fixfile --filter $setup_startup || :) <<-_EOF_
+	grep -v 'tlr cron'
+	echo "$BINDIR/tlr cron --no-randomize"
+	_EOF_
+  fi
+fi
+
+if [ -f $sshdcfg ] ; then
+  if $setup_sshd ; then
+    include -1 api-sshutil.sh
+
+    sshdcfg_fixup -v "$sshdcfg" \
+	  /etc/ssh/userkeys/%u/host_keys \
+	  /etc/ssh/userkeys/%u/admin_keys
+    grep -Hn AuthorizedKeysFile $sshdcfg
+  fi
+fi
+

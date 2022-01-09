@@ -1,0 +1,54 @@
+#!/bin/sh
+#
+# Main entry point for TLR tools
+#
+# Sets-up:
+# - TLR_CMD
+# - TLR_EXE
+#
+# - TLR_BASE
+# - TLR_LIB
+# - TLR_BIN
+#
+# - ASHLIB
+# - ASHLIB_PATH
+#
+set -euf -o pipefail
+export TLR_CMD="$(basename "$0")" TLR_EXE="$(basename "$(readlink -f "$0")")"
+if [ x"$TLR_CMD" = x"$TLR_EXE" ] ; then
+  if [ $# -eq 0 ] ; then
+    echo "Missing sub-command" 1>&2
+    exit 2
+  fi
+  TLR_CMD="$1" ; shift
+fi
+
+[ -z "${TLR_BASE:-}" ] && export TLR_BASE="$(dirname $(dirname $(readlink -f "$0")))"
+[ -z "${TLR_LIB:-}" ] && export TLR_LIB="$TLR_BASE/lib"
+if [ -z "${ASHLIB:-}" ] ; then
+  if [ -d "$TLR_BASE/../.ashlib" ] ; then
+    ASHLIB="$(readlink -f "$TLR_BASE/../.ashlib/src/ashlib")"
+  elif [ -d "$TLR_BASE/ashlib" ] ; then
+    ASHLIB="$TLR_BASE/ashlib"
+  else
+    echo "Missing ASHLIB dependancy" 1>&2
+    exit 1
+  fi
+  export ASHLIB
+fi
+[ -z "${ASHLIB_PATH:-}" ] && export ASHLIB_PATH="$TLR_LIB:$ASHLIB"
+[ -z "${TLR_BIN:-}" ] && export TLR_BIN="$TLR_BASE/bin"
+
+if [ x"$(basename "$(readlink -f "$TLR_BIN/$TLR_CMD")")" = x"$TLR_EXE" ] ; then
+  if [ $# -eq 0 ] ; then
+    echo "Missing sub-command" 1>&2
+    exit 2
+  fi
+  TLR_CMD="$1" ; shift
+fi
+if [ ! -x "$TLR_BIN/$TLR_CMD" ] ; then
+  echo "$TLR_CMD: unknown sub-command" 1>&2
+  exit 3
+fi
+
+exec "$TLR_BIN/$TLR_CMD" "$@"

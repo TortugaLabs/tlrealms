@@ -5,41 +5,42 @@ UNIX password files.
 
 Data is synchronized on a regular basis from a central server.
 
-## Sprint
+* * *
+
+/usr/local/bin/tlr -> xx -> /usr/local/lib/tlr/bin/tlr
+
+/usr/local/lib/tlr (TLR_BASE)
+  - lib (env TLR_LIB)
+  - bin (env TLR_BIN)
+  - ashlib (env ASHLIB)
+
+* * *
+
+- TLR_CFG
+  - /etc/tlr.cfg - site overrides
+- TLR_DATA
+  - /etc/tlr (folder or symlink)
+    - TLR_DATA/settings.sh
+    - TLR_DATA/secrets.sh
+- TLR_LOCAL
+  - /var/local/tlr-local
+  - /etc/tlr-local
+  - /var/lib/tlr-local
+
+* * *
 
 
 
-## Backlog
+## misc
 
-- devtools
-  - test infrastructure
-  - soft dependancy on ashlib
-  - travis-ci
-- plist management
-  - <key><spc><value>
-  - `awk '{$1="";$0=$0;$1=$1}1'`
-- self-configuration
-  - Directory to transfer
-  - location of lib files + ashlib
-  - location of bin files
-  - environment overrides
-- file-transfer
-  - fixup sshd-config
-  - rsync force command
-- rpc-ops
-  - rpc-ops force command
-- hosts db
-  - host enrollment
-    - host pre-load
-    - host post-reg
-- user db
-- mkpasswd: use python3 or openssl_passwd
-- snippets
-  - migrate from src to dst
-  - newdb
-  - reset existing db
-  - host setup
-  - host update
-  - backup
-  - restore from backup
+- [ ] setup
+- [ ] setup-demo
+
+## others
+
+- autonom (bottle-api)
+- www-api: enroll (busybox-extras httpd?)
+- basic-auth|digest-auth : password checker (apache?)
+
+
 

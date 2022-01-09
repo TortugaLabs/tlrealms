@@ -1,0 +1,241 @@
+#!/bin/sh
+. $TLR_LIB/init.sh
+#
+# User management
+#
+[ $# -eq 0 ] &&  set - list
+
+include -1 api-users.sh
+include -1 api-groups.sh
+include -1 api-polrun.sh
+
+def_gid() {
+  echo "$uid"
+}
+def_gecos() {
+  echo "$user"
+}
+def_home() {
+  echo "/home/$user"
+}
+rand_user() {
+  local user
+  while : ; do
+    user="u$RANDOM"
+    user_exists "$user" || break
+  done
+  echo "$user"
+}
+
+op_add() {
+  [ $# -eq 0 ] && quit 10 "Usage: $TLR_CMD add [options] {user}"
+
+  user="" ; uid="" ; gid="" ; gecos="" ; pw_dir="" ; pw_shell="/bin/sh"
+  sp_min="" ; sp_max="" ; sp_warn="" ; sp_inact="" ; passwd=""
+
+  while [ $# -gt 0 ]
+  do
+    case "$1" in
+    --uid=*)		uid=${1#--uid=} ;;
+    --gid=*)		gid=${1#--gid=} ;;
+    --gecos=*)		gecos=${1#--gecos=} ;;
+    --home=*)		pw_dir=${1#--home=} ;;
+    --shell=*)		pw_shell=${1#--shell=} ;;
+    --spmin=*)		sp_min="$1" ;;
+    --spmax=*)		sp_max="$1" ;;
+    --spwarn=*)		sp_warn="$1" ;;
+    --spinact=*)	sp_inact="$1" ;;
+    --passwd=*)		passwd=${1#--passwd} ;;
+    *)			user="$1" ;;
+    esac
+    shift
+  done
+
+  for item in \
+	"user:Username:rand_user" "uid:UID:users_pickuid" "gid:GID:def_gid" "gecos:GECOS:def_gecos" \
+	"pw_dir:Home Directory:def_home" "passwd:Password:users_pwgen"
+  do
+    k=$(echo "$item" | cut -d: -f1)
+    p=$(echo "$item" | cut -d: -f2)
+    d=$(echo "$item" | cut -d: -f3)
+    eval c=\"\$$k\"
+    if [ -z "$c" ] ; then
+      if [ -n "$d" ] ; then
+        d="$($d)"
+	p="$p ($d): "
+      else
+        p="$p: "
+      fi
+      read -p "$p" $k || :
+      eval c=\"\$$k\"
+      [ -z "$c" ] && eval $k'="$d"'
+    elif [ "$c" = auto ] || [ "$c" = "#" ]  ; then
+      d="$($d)"
+      eval $k='"$d"'
+    fi
+    if [ "$k" = "user" ] ; then
+      user=$(users_namechk "$user") || quit 70 "Invalid user name specified"
+      users_exists $user && quit 71 "$user: already exist"
+    fi
+  done
+  users_add \
+	--uid=$uid \
+	--gid=$gid \
+	--gecos="$gecos" \
+	--home="$pw_dir" \
+	--shell="$pw_shell" \
+	$sp_min $sp_max $sp_warn $sp_inact \
+	"$user"
+  users_passwd --set "$user" "$passwd"
+  users_map "$user" ident_sso "$(users_pwgen)"
+  polrun_apply users || :
+}
+
+op_mod() {
+  [ $# -eq 0 ] && quit 10 "Usage: $TLR_CMD mod [options] {user}"
+
+  user="" ; uid="" ; gid="" ; gecos="" ; pw_dir="" ; pw_shell=""
+  sp_min="" ; sp_max="" ; sp_warn="" ; sp_inact=""
+
+  while [ $# -gt 0 ]
+  do
+    case "$1" in
+    --uid=*)		uid="${1#--uid=}" ;;
+    --gid=*)		gid="${1#--gid=} ";;
+    --gecos=*)		gecos=${1#--gecos=} ;;
+    --home=*)		pw_dir=${1#--home=} ;;
+    --shell=*)		pw_shell=${1#--shell=} ;;
+    --spmin=*)		sp_min="${1#--spmin}" ;;
+    --spmax=*)		sp_max="${1#--spmax}" ;;
+    --spwarn=*)		sp_warn="${1#--spwarn}" ;;
+    --spinact=*)	sp_inact="${1#--spinact}" ;;
+    *)			user="$1" ;;
+    esac
+    shift
+  done
+  [ -z "$user" ] && quit 11 "Must specify user"
+  users_exists "$user" || quit 12 "$user: does not exit"
+
+  set - "$user"
+
+  [ -n "$uid" ] && set - "$@" uid "$uid"
+  [ -n "$gid" ] && set - "$@" gid "$gid"
+  [ -n "$gecos" ] && set - "$@" gecos "$gecos"
+  [ -n "$pw_dir" ] && set - "$@" pw_dir "$pw_dir"
+  [ -n "$pw_shell" ] && set - "$@" pw_shell "$pw_shell"
+  [ -n "$sp_min" ] && set - "$@" sp_min "${sp_min#=}"
+  [ -n "$sp_max" ] && set - "$@" sp_max "${sp_max#=}"
+  [ -n "$sp_warn" ] && set - "$@" sp_warn "${sp_warn#=}"
+  [ -n "$sp_inact" ] && set - "$@" sp_inact "${sp_inact#=}"
+
+  [ $# -gt 1 ] && users_cfg "$@"
+  polrun_apply users || :
+
+}
+
+op_pwck() {
+  while [ $# -gt 0 ] ; do
+    case "$1" in
+    --policy)
+      if type password_help >/dev/null 2>&1 ; then
+	password_help
+      elif type password_policy >/dev/null 2>&1 ; then
+	declare -f password_policy
+      else
+	echo "No password policy defined"
+      fi
+      exit 0
+      ;;
+    --stdout)
+      exec 2>&1
+      ;;
+    *)
+      break
+      ;;
+    esac
+    shift
+  done
+  if [ $# -eq 1 ] ; then
+    local passwd="$1"
+  elif [ $# -eq 0 ] ; then
+    read passwd
+  else
+    quit 10 "Usage: $TLR_CMD pwck [passwd]"
+  fi
+  polrun_pwck "$passwd"
+  exit $?
+}
+
+op_passwd() {
+  [ $# -eq 0 ] && quit 10 "Usage: $TLR_CMD passwd {user} [passwd]"
+  user="$1" ; shift
+  passwd="$*"
+  [ -z "$passwd" ] && read -p "Password: " passwd
+  users_passwd --set "$user" "$passwd"
+  polrun_apply users || :
+}
+
+op_del() {
+  [ $# -eq 0 ] && quit 10 "Usage: $TLR_CMD del {user}"
+  for n in "$@"
+  do
+    users_del "$n"
+    groups_deluser --all "$n"
+  done
+  polrun_apply users || :
+}
+
+op_cfg() {
+  for u in "$@"
+  do
+    users_cfg -v "$u"
+    [ $# -gt 1 ] && echo '=' || :
+  done
+  polrun_apply users || :
+}
+
+
+op="$1" ; shift
+
+case "$op" in
+list)
+  users_list
+  ;;
+cfg)
+  op_cfg "$@"
+  ;;
+add)
+  op_add "$@"
+  ;;
+mod)
+  op_mod "$@"
+  ;;
+del)
+  op_del "$@"
+  ;;
+passwd)
+  op_passwd "$@"
+  ;;
+pwck)
+  op_pwck "$@"
+  ;;
+help)
+  cat <<-_EOF_
+	Usage: $TLR_CMD {op} [args]
+
+	Ops:
+	- list : list users
+	- cfg: show cfg data
+	- add : add user
+	- mod : modify existing user
+	- del : delete user
+	- passwd : change user password
+	- pwck : check if a password follows policy
+	_EOF_
+  exit 1
+  ;;
+*)
+  quit 2 "Unknown op: $op"
+  ;;
+esac
+

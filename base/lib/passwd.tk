@@ -1,0 +1,162 @@
+#!/usr/bin/env wish
+#
+# GUI for password changing
+#
+proc run_cmd {cmd input} {
+  puts "CMD: $cmd"
+  if {[catch {open "| $cmd" r+} chan]} {
+    return [list error "exec: $chan"]
+  }
+  puts $chan $input
+  flush $chan
+  chan close $chan write
+
+  set buf [read $chan]
+  puts $buf
+
+  if {[catch {close $chan}]} {
+    return [list error $buf]
+  }
+  return [list ok $buf]
+}
+
+proc rpc_passwd {user cpwd npwd} {
+  global env
+  return [run_cmd  \
+	"env DISPLAY= $env(TLR_BIN)/$env(TLR_EXE) chpw" \
+	[format "%s\n%s\n" $cpwd $npwd]]
+}
+
+proc pwck {npwd} {
+  global env
+  foreach {rc msg} [run_cmd \
+	"$env(TLR_BIN)/$env(TLR_EXE) usrmgr pwck --stdout" \
+	$npwd] break
+  puts [list $rc $msg]
+  return [list $rc $msg]
+}
+
+proc _ {msg args} {
+  return [format "$msg" {*}$args]
+}
+
+proc toggle_showpw {w} {
+  if {$::_showpw} {
+    set ::_password2 ""
+    $w.pass2 config -state disable
+    $w.pass1 config -show ""
+    $w.pass0 config -show ""
+  } else {
+    set ::_password2 $::_password1
+    $w.pass2 config -state normal
+    $w.pass1 config -show "*"
+    $w.pass0 config -show "*"
+  }
+}
+
+proc cancel_password {w} {
+  exit 0
+}
+
+proc ok_password {w user} {
+  set tl $w
+  if {$w == "."} { set w "" }
+
+  if {!$::_showpw} {
+    if {$::_password1 != $::_password2 } {
+      tk_messageBox \
+	-parent $tl \
+	-icon error \
+	-message [_ "Passwords do not match"] \
+	-title [_ "Password Change"] \
+	-type ok
+      return
+    }
+  }
+  foreach {rc msg2} [pwck $::_password1] break
+  if {$rc != "ok"} {
+    global env
+    set msg1 [_ "Invalid password:"]
+    set msg3 [exec $env(TLR_BIN)/$env(TLR_EXE) usrmgr pwck --policy]
+    tk_messageBox \
+	-parent $tl \
+	-icon error \
+	-message "$msg1 $msg2\n$msg3" \
+	-title [_ "Password Change"] \
+	-type ok
+    return
+  }
+  foreach {rc msg} [rpc_passwd $user $::_cpassword $::_password1] break
+  puts $msg
+  if {$rc == "ok"} {
+    tk_messageBox \
+	-parent $tl \
+	-icon info \
+	-message [_ "Password changed succesfully"] \
+	-title [_ "Password Change"] \
+	-type ok
+    exit 0
+  } else {
+    tk_messageBox \
+	-parent $tl \
+	-icon error \
+	-message [_ "Password change error\n%s" $msg] \
+	-title [_ "Password Change"] \
+	-type ok
+  }
+}
+
+proc setup {w user} {
+  set tl $w
+  if {$w == "."} { set w "" }
+
+  # TODO: $w.show : should have bitmaps
+  wm title $tl [_ "Change password for %1\$s" $user]
+  wm resizable $tl 0 0
+  wm protocol $tl WM_DELETE_WINDOW [list $w.cancel invoke]
+
+  label $w.u -text [_ "User name:"]
+  entry $w.user -textvar _username -state readonly
+  label $w.p0 -text [_ "Current password:"]
+  entry $w.pass0 -show "*" -textvar _cpassword
+  label $w.p1 -text [_ "New password:"]
+  entry $w.pass1 -show "*" -textvar _password1
+  label $w.p2 -text [_ "Confirm password:"]
+  entry $w.pass2 -show "*" -textvar _password2
+
+  frame $w.okcancel
+
+  button $w.ok -text OK -command [list ok_password $tl $user']
+  button $w.cancel -text Cancel -command [list cancel_password $w]
+
+  checkbutton $w.show -variable _showpw -command [list toggle_showpw $w]
+
+  grid   $w.u  $w.user  -	-sticky nws
+  grid   $w.p0 $w.pass0 $w.show	-sticky nws
+  grid	 $w.p1 $w.pass1 -	-sticky nws
+  grid	 $w.p2 $w.pass2 -	-sticky nws
+  grid   $w.okcancel - -	-sticky news -pady 5 -padx 5
+
+  pack $w.ok $w.cancel -in $w.okcancel -side left -padx 5
+
+  bind $tl <Return> [list $w.ok invoke]
+  bind $tl <Escape> [list $w.cancel invoke]
+  raise $tl
+  grab set $tl
+  focus -force $w.pass0
+
+  set ::_username $user
+  set ::_showpw 0
+}
+
+option add *Font "Helvetica 11" widgetDefault
+option add *Button.font "Helvetica 11 bold" widgetDefault
+
+set scriptdir [file dirname [info script]]
+set appname [file root [tk appname]]
+catch {option readfile [file join $scriptdir $appname.opt] startup}
+catch {option readfile [file join $env(HOME) ".$appname.opt"] user}
+
+puts "==========="
+setup . $tcl_platform(user)
+
