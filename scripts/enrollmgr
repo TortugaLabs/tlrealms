@@ -1,0 +1,85 @@
+#!/bin/sh
+#include prologue.sh
+#
+# Enrollment manager 
+#
+require api-enrollments.sh
+require shescape.sh
+
+[ $# -eq 0 ] && die 10 "$0: op [args]"
+
+op="$1" ; shift
+
+
+case "$op" in
+list)
+  if [ $# -eq 0 ] ; then
+    enrolls_list | while read n
+    do
+      echo $(enrolls_get id "$n") $(enrolls_get dup "$n") $(enrolls_get log "$n")
+    done
+  else
+    for vv in "$@"
+    do
+      [ $# -gt 1 ] && echo -n "$vv:"
+      if enrolls_exists "$vv" ; then
+	echo ''
+	ls "$(enrolls_queue_dir)/$vv.d"
+      else
+	echo "NOT FOUND"
+      fi
+      [ $# -gt 1 ] && echo '='
+    done
+  fi
+  ;;
+log)
+  for vv in "$@"
+  do
+    [ $# -gt 1 ] && echo "$vv:"
+    cat $TLR_LOGS/enroll-"$vv"
+  done
+  ;;
+purge)
+  enrolls_del "$@"
+  ;;
+approve)
+  opts=""
+  while [ $# -gt 0 ] ; do
+    if [ x"${1:0:1}" = x"-" ] ;then
+      opts="$opts $(shell_escape "$1")"
+      shift
+    else
+      break
+    fi
+  done
+  for vv in "$@"
+  do
+    ( enrolls_this $opts "$vv" )
+  done
+  ;;
+info)
+  for vv in "$@"
+  do
+    [ $# -gt 1 ] && echo "$vv:"
+    cat "$(enrolls_queue_dir)/$vv.d/metadata.cfg"
+  done
+  ;;
+help)
+  cat <<-EOF
+	Sub-commands:
+	- $0 list [id]
+	  - list enrollments
+	- $0 purge [--no-logs] [--no-queue] id ...
+	  - delete enrollment jobs
+	- $0 approve id ...
+	  - approve enrollments
+	- $0 log id
+	  - view enrollment job's log
+	- $0 info id
+	  - view enrollment job meta data
+	EOF
+  ;;
+*)
+  die 20 "Invalid op: $op"
+  ;;
+esac

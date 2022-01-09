@@ -1,0 +1,85 @@
+#!/bin/sh
+version="0.1"
+#
+# Private communication channel handler script
+#
+set -euf -o pipefail
+
+access_dir="/etc/tlops"
+
+die() {
+  local rc="$1" ; shift
+  echo "$@"
+  exit $rc
+}
+
+[ $# -eq 0 ] && die 1 "Unconfigured channel"
+guest="$1" ; shift
+[ ! -d "$access_dir/$guest" ] && die 2 "$guest: Undefined guest"
+auth=""
+
+auth_client() {
+  [ ! -f "$access_dir/$guest/psk.txt" ] && return 1
+  exec < "$access_dir/$guest/psk.txt"
+  while read id psk
+  do
+    if [ x"$*" = x"$psk" ] ; then
+      echo "$id"
+      return 0
+    fi
+  done
+  return 2
+}
+init_client() {
+  local f
+  for f in "$access_dir/common.sh" "$access_dir/$guest.sh" "$access_dir/$guest/$id.sh"
+  do
+    [ ! -f "$f" ] && continue
+    . "$f"
+  done
+}
+dispatch_cmd() {
+  local cmd="$1" args="$2" op
+
+  for op in "tlop_${guest}_${auth}_${cmd}" "tlop_${guest}_${cmd}" "tlop_${cmd}"
+  do
+    if type "$op" >/dev/null 2>&1 ; then
+      "$op" "$args"
+      return 0
+    fi
+  done
+  return 1
+}
+
+while read cmd args
+do
+  case "$cmd" in
+  auth)
+    if [ -n "$auth" ] ; then
+      echo "Logged in as $auth"
+    else
+      if auth="$(auth_client "$args")" ; then
+	echo "OK"
+      else
+	echo "FAILED"
+      fi
+      init_client
+    fi
+    ;;
+  datetime)
+    date +"%s"
+    ;;
+  genuuid)
+    cat /proc/sys/kernel/random/uuid
+    ;;
+  guest)
+    echo "$guest"
+    ;;
+  version)
+    echo "xchan $version"
+    ;;
+  *)
+    dispatch_cmd "$cmd" "$args" || echo "Unknown command"
+    ;;
+  esac
+done

@@ -1,0 +1,9 @@
+#!/bin/sh
+#include prologue.sh
+#
+# Apply policies
+#
+set -euf -o pipefail
+
+
+run-parts $TLR_POLICIES

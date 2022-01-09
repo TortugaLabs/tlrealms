@@ -1,0 +1,101 @@
+#!/bin/sh
+#
+# Script to enroll a host into a realm
+#
+set -euf -o pipefail
+[ -z "${TLR_SERVER:-}" ] && TLR_SERVER='<TLR_SERVER>'
+[ -z "${TLR_SCRIPTS:-}" ] && TLR_SCRIPTS='<TLR_SCRIPTS>'
+run="echo -- "
+
+rc=false
+for cmd in rsync
+do
+  if ! type $cmd ; then
+    rc=true
+  fi
+done
+$rc && exit 1
+
+#include ../lib/urlencode.sh
+
+hostname="${HOSTNAME:-$(uname -n)}"	# can be overriden with HOSTNAME environment variable
+echo "Enrollment as: $hostname"
+
+workdir=$(mktemp -d)
+trap "rm -rf $workdir" EXIT
+
+wget -O "$workdir/payload.html" "http://$TLR_SERVER/tlr/enroll.cgi?host=$(urlencode "$hostname")"
+grep "MSG: " "$workdir/payload.html" || :
+awk '/__BEGIN__/{flag=1;next}/__END__/{flag=0}flag' < "$workdir/payload.html" \
+	| base64 -d \
+	| tar -C "$workdir" -zxf -
+
+find /etc/ssh -name 'ssh_host_*' -type f -print0 | xargs -0 $run rm -f
+find "$workdir" -name 'ssh_host_*' -type f -print | while read f
+do
+  $run cp "$f" /etc/ssh
+done
+
+dotssh="$HOME/.ssh"
+
+$run mkdir -p "$dotssh"
+$run chmod 700 "$dotssh"
+if [ -f "$dotssh"/authorized_keys ] ; then
+  $run mv "$dotssh"/authorized_keys "$dotssh"/authorized_keys.backup
+fi
+$run cp "$workdir/admin_key.pub" "$dotssh"/authorized_keys
+$run chmod 600 "$dotssh"/authorized_keys
+
+# Configure sshd...
+sshd_config=/etc/ssh/sshd_config
+extra_keys=/etc/ssh/userkeys/%u/authorized_keys
+if ! grep -q "$extra_keys" "$sshd_config" ; then
+  echo "Updating $sshd_config"
+  ntxt="$(
+	sed -e "s/^\(.*AuthorizedKeysFile\)/#TLR# \1/" -e 's/^/:/' $sshd_config
+	echo ':'
+	echo ":#TLR## Enabled $extra_keys for TLR deployed keys"
+	echo ":AuthorizedKeysFile      .ssh/authorized_keys $extra_keys"
+	)"
+  echo "$ntxt" | sed -e 's/^://' | $run tee $sshd_config | md5sum || echo $?
+  # We need to restart sshd
+  if type rc-service ; then
+    echo "Alpine OpenRC system"
+    rc-service sshd restart
+  elif type sv ; then
+    echo "Void-Linux runsvc"
+    if [ ! -d /var/service/sshd ] ; then
+      ln -s /etc/sv/sshd /var/service
+    else
+      sv restart sshd
+    fi
+  fi
+fi
+
+if [ -n "${TLR_STORE:-}" ] ; then
+  [ -d "$TLR_STORE" ] && rm -rf "$TLR_STORE"
+  mkdir -p "$TLR_STORE"
+  rm -rf /etc/tlr-store
+  ln -s $TLR_STORE /etc/tlr-store
+  for d in tlr:main tlr-local:local
+  do
+    d1=$(echo $d |cut -d: -f1)
+    d2=$(echo $d |cut -d: -f2)
+    rm -rf /etc/$d1 $TLR_STORE/$d2
+    mkdir -p $TLR_STORE/$d2
+    ln -s $TLR_STORE/$d2 /etc/$d1
+  done
+else
+  mkdir -p /etc/tlr /etc/tlr-local
+fi
+mkdir -p /var/log/tlr
+
+echo '='
+cat "$workdir/metadata.cfg"
+
+# Check if doing an off-line enrollment...
+if [ -n "${OFFLINE:-}" ] ; then
+  enroll_id=$(. "$workdir/metadata.cfg" ; echo "$id") || enroll_id=""
+  ssh $OFFLINE $TLR_SCRIPTS/enrollmgr approve ${ENROLL_OPTS:-} --offline $enroll_id \
+    | sed -e '1,/== begin here ==/ d' | base64 -d | tar -C /etc/tlr -zxvf -
+fi

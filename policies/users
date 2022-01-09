@@ -1,0 +1,141 @@
+#!/bin/sh
+#include prologue.sh
+#
+# Apply user related policies
+#
+
+require depcheck.sh
+require pol-users.sh
+
+# Used for SSO mappings...
+users_mapfiles=$(find "$TLR_DATA/users.d" -mindepth 1 -maxdepth 1 -type f -name '*.pwd' | while read f
+do
+  c=$(echo "$f" | sed -e 's/\.pwd$/.cfg/')
+  [ ! -f "$c" ] && continue
+  c=$(echo "$f" | sed -e 's/\.pwd$/.map/')
+  [ -f "$c" ] && echo "$c"
+done) || :
+
+mapfile="$TLR_LOCAL/ident_sso.map"
+if depcheck $mapfile $0 $users_mapfiles ; then
+  > "${mapfile}-" ; chmod 600 "${mapfile}-"
+  (for f in $users_mapfiles
+  do
+    username="$(basename $f .map)"
+    ident_sso=""
+    (
+      . "$f"
+      [ -n "$ident_sso" ] && echo "$ident_sso:$username"
+    )
+  done) >"${mapfile}-"
+  mv -f "${mapfile}-" "${mapfile}"
+fi
+mapfile="$TLR_LOCAL/social_sso.map"
+if depcheck $mapfile $0 $users_mapfiles ; then
+  > "${mapfile}-" ; chmod 600 "${mapfile}-"
+  (for f in $users_mapfiles
+  do
+    username="$(basename $f .map)"
+    social_logins=""
+    (
+      . "$f"
+      if [ -n "$social_logins" ] ; then
+	for email in $(echo "$social_logins" | tr , ' ')
+	do
+	  echo "$email:$username"
+	done
+      fi
+    )
+  done) >"${mapfile}-"
+  mv -f "${mapfile}-" "${mapfile}"
+fi
+
+passwd_txt=$TLR_LOCAL/passwd.txt
+if depcheck $passwd_txt $0 $(userspol_pwdfiles) ; then
+  gen_etcpasswd $(userspol_pwdfiles) | sort -t : -k 3 -n > $passwd_txt
+fi
+
+shadow_txt=$TLR_LOCAL/shadow.txt
+if depcheck $shadow_txt $0 $(userspol_pwdfiles) ; then
+  gen_shadow $(userspol_pwdfiles) | sort -t : -k 1 -n | cut -d : -f 2- > $shadow_txt
+  chmod 600 $shadow_txt
+fi
+
+if [ -z "${webuser:-}" ]; then
+  webuser=bin		# Suitable (secure) default...
+  if [ -f /etc/apk/world ] ; then
+    if grep -q apache /etc/apk/world ; then
+      webuser=apache
+    elif grep -q nginx /etc/apk/world ; then
+      webuser=nginx
+    elif grep -q mini_httpd /etc/apk/world ; then
+      webuser=minihttpd
+    fi
+  fi
+fi
+if id $webuser >/dev/null 2>&1 ; then
+  for htmode in htpasswd htdigest
+  do
+    htfile=$TLR_LOCAL/$htmode.txt
+    if depcheck $htfile $0 $(userspol_pwdfiles) ; then
+      > ${htfile}- ; chmod 600 ${htfile}-
+      gen_pwdfile $htmode $(userspol_pwdfiles) > ${htfile}-
+      > ${htfile} ; chmod 600 ${htfile}
+      awk -f $TLR_LIB/pwfix.awk -vshadow=${htfile}- $passwd_txt > ${htfile}
+      rm ${htfile}-
+    fi
+    chown $webuser $htfile
+    chmod 600 $htfile
+  done
+
+  
+fi
+
+#
+# Merge TL|Realm users with /etc/passwd files
+#
+if [ ${GID_MIN:=11000} -lt ${UID_MIN:=2000} ] ; then
+  min_id=$GID_MIN
+else
+  min_id=$UID_MIN
+fi
+max_id=${XID_MAX:-65500}
+  
+etc_passwd=/etc/passwd ; passwd_tmp=$TLR_LOCAL/passwd.tmp
+if depcheck $passwd_tmp $etc_passwd $0 $passwd_txt ; then
+  (
+    awk -vFS=":" '$3 < '$min_id' || $3 > '$max_id $etc_passwd
+    cat $passwd_txt
+  ) | sort -t : -k 3 -n > $passwd_tmp
+fi
+etc_shadow=/etc/shadow ; shadow_tmp=$TLR_LOCAL/shadow.tmp
+if depcheck $shadow_tmp $etc_shadow $0 $shadow_txt ; then
+  (
+    awk -f $TLR_LIB/pwfix.awk -vshadow=$etc_shadow -vmin=$min_id -vmax=$max_id $etc_passwd
+    cat $shadow_txt
+  ) > $shadow_tmp
+  chmod 600 $shadow_tmp
+fi
+
+if has_role users users_login ; then
+  if [ $(wc -l < $passwd_tmp) -gt 5 ] ; then
+    if ! cmp $passwd_tmp $etc_passwd ; then
+      cp -a $etc_passwd ${etc_passwd}-
+      cat $passwd_tmp > $etc_passwd
+    else
+      : touch $etc_passwd
+    fi
+  fi
+  if has_role users_login ; then
+    if [ $(wc -l < $shadow_tmp) -gt 5 ] ; then
+      if ! cmp $shadow_tmp $etc_shadow ; then
+	cp -av $etc_shadow ${etc_shadow}-
+	cat $shadow_tmp > $etc_shadow
+      fi
+    fi
+  fi
+#elif has_role userdb userdb_login ; then
+  #
+  # Create /var/db files (for nsswitch.conf)
+  #
+fi

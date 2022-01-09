@@ -1,0 +1,200 @@
+#!/bin/sh
+#include prologue.sh
+#
+# User manager 
+#
+require api-users.sh
+
+[ $# -eq 0 ] && die 10 "$0: op [args]"
+
+def_gid() {
+  echo "$uid"
+}
+def_gecos() {
+  echo "$user"
+}
+def_home() {
+  echo "/home/$user"
+}
+rand_user() {
+  local user
+  while : ; do
+    user="u$RANDOM"
+    user_exists "$user" || break
+  done
+  echo "$user"
+}
+  
+
+op="$1" ; shift
+
+
+case "$op" in
+list)
+  if [ $# -eq 0 ] ; then
+    users_list
+  else
+    if [ $# -eq 1 ] ;then
+      users_user "$1"
+    else
+      for i in "$@"
+      do
+	if out="$(users_user "$i")" ; then
+	  echo "$out" | sed -e "s!^!$i: !"
+	else
+	  echo "$i: *unknown*"
+	fi
+      done
+    fi
+  fi
+  ;;
+add)
+  is_master || die 10 "This should only be run from master server"
+  [ $# -eq 0 ] && die 10 "Usage: $0 add [options] <user>"
+  
+  user="" ; uid="" ; gid="" ; gecos="" ; pw_dir="" ; pw_shell="/bin/sh"
+  sp_min="" ; sp_max="" ; sp_wran="" ; sp_inact="" ; passwd=""
+  
+  while [ $# -gt 0 ]
+  do
+    case "$1" in
+    --uid=*)		uid=${1#--uid=} ;;
+    --gid=*)		gid=${1#--gid=} ;;
+    --gecos=*)		gecos=${1#--gecos=} ;;
+    --home=*)		pw_dir=${1#--home=} ;;
+    --shell=*)		pw_shell=${1#--shell=} ;;
+    --spmin=*)		sp_min="$1" ;;
+    --spmax=*)		sp_max="$1" ;;
+    --spwarn=*)		sp_warn="$1" ;;
+    --spinact=*)	sp_inact="$1" ;;
+    --passwd=*)		passwd=${1#--passwd} ;;
+    *)			user="$1" ;;
+    esac
+    shift
+  done
+
+
+  for item in \
+	"user:Username:rand_user" "uid:UID:users_pickuid" "gid:GID:def_gid" "gecos:GECOS:def_gecos" \
+	"pw_dir:Home Directory:def_home" "passwd:Password:users_pwgen"
+  do
+    k=$(echo "$item" | cut -d: -f1)
+    p=$(echo "$item" | cut -d: -f2)
+    d=$(echo "$item" | cut -d: -f3)
+    eval c=\"\$$k\"
+    if [ -z "$c" ] ; then
+      if [ -n "$d" ] ; then
+        d="$($d)"
+	p="$p ($d): "
+      else
+        p="$p: "
+      fi
+      read -p "$p" $k
+      eval c=\"\$$k\"
+      [ -z "$c" ] && eval $k'="$d"'
+    elif [ "$c" = auto ] || [ "$c" = "#" ]  ; then
+      d="$($d)"
+      eval $k='"$d"'
+    fi
+    if [ "$k" = "user" ] ; then
+      user=$(users_namechk "$user") || die 70 "Invalid user name specified"
+      users_exists $user && die 71 "$user: already exist"
+    fi
+  done
+  users_add --uid=$uid --gid=$gid "$user"
+  users_passwd "$user" "$passwd"
+  users_user "$user" --gecos="$gecos" --home="$pw_dir" --shell="$pw_shell" $sp_min $sp_max $sp_warn $sp_inact
+  apply_policies
+  ;;
+del)
+  is_master || die 10 "This should only be run from master server"
+  [ $# -eq 0 ] && die 30 "Usage: $0 $op <user> [users ...]"
+  users_del "$@"
+  apply_policies
+  ;;
+mod)
+  is_master || die 10 "This should only be run from master server"
+  [ $# -eq 0 ] && die 30 "Usage: $0 $op [options] <user>"
+  
+  user="" ; uid="" ; gid="" ; gecos="" ; pw_dir="" ; pw_shell=""
+  sp_min="" ; sp_max="" ; sp_wran="" ; sp_inact=""
+  
+  while [ $# -gt 0 ]
+  do
+    case "$1" in
+    --uid=*)		uid="$1" ;;
+    --gid=*)		gid="$1" ;;
+    --gecos=*)		gecos="$1" ;;
+    --home=*)		pw_dir="$1" ;;
+    --shell=*)		pw_shell="$1" ;;
+    --spmin=*)		sp_min="$1" ;;
+    --spmax=*)		sp_max="$1" ;;
+    --spwarn=*)		sp_warn="$1" ;;
+    --spinact=*)	sp_inact="$1" ;;
+    *)			user="$1" ;;
+    esac
+    shift
+  done
+  users_user "$user" "$uid" "$gid" "$gecos" "$pw_dir" "$pw_shell" "$sp_min" "$sp_max" "$sp_warn" "$sp_inact"
+  apply_policies
+  ;;
+passwd)
+  if is_master ; then
+    [ $# -eq 0 ] && die 30 "Usage: $0 $op <user> [passwd]"
+    user="$1" ; shift
+    passwd="$*"
+    [ -z "$passwd" ] && read -p "Password: " passwd
+    users_passwd "$user" "$passwd"
+    apply_policies
+  else
+    if ! users_exists "$(whoami)" ; then
+      die 35 "You do not exist as a domain user"
+    fi
+    die 100 "Un-implemented"
+    # - read passwords
+    # - call api-users : chpasswd
+    #   - get master openssh (ssh-rsa) public key
+    #   - convert to PEM (https://unix.stackexchange.com/questions/26924/how-do-i-convert-a-ssh-keygen-public-key-into-a-format-that-openssl-pem-read-bio)
+    #	- Encrypt <username> <oldpwd> <newpwd> (https://www.czeskis.com/random/openssl-encrypt-file.html)
+    #   - Send by http wget --post-data="data as x=y&z=w urlencoded"
+    #	  - receive message
+    #	  - Create RSVP channel pipe, send encrypted message to srvpriv
+    #	    - srvpriv receives msg
+    #	    - decrypts msg
+    #	    - verifies pwd
+    #	    - updates database
+    #	    - returns OK (success)|BAD (authencation error)|ERROR (other error)
+    #	  - Returns results to client
+    #	- Force sync
+  fi
+  ;;
+help)
+  cat <<-EOF
+	Sub-commands:
+	- $0 list [user ...]
+	  Show list of users.  If user is specified, it will show the
+	  details for that user.
+	- $0 add [options] [user]
+	  Create a new user.
+	- $0 del _user_
+	  delete user
+	- $0 mod [options] _user_
+	- $0 passwd _user_ _passwd_ (on master)
+	- $0 passwd (on client)
+	
+	Options for add and mod:
+	--uid=#		User ID
+	--gid=#		Primary group ID
+	--gecos=name	GECOS field (usually full name)
+	--home=path	Home directory
+	--shell=path	login shell
+	--spmin=days	days until password change allowed
+	--spwarn=days	days before warning expiration
+	--spinact=days	days when account expires
+	--passwd=text	password (only when creating new user)
+	EOF
+  ;;
+*)
+  die 20 "Invalid op: $op"
+  ;;
+esac

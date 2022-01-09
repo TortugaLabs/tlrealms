@@ -1,0 +1,53 @@
+#!/bin/sh
+#include prologue.sh
+#
+# Setup demo
+#
+# Configure demo database
+#
+require fixfile.sh
+require api-users.sh
+
+setup_demo() {
+  groupmgr add admins || :
+  groupmgr add royals
+  groupmgr add knights
+  groupmgr add nobles
+  groupmgr add commoners
+
+  local u g p output=""
+  for ug in \
+	"arthur:Arthur Pendragon" "morgana:Morgan Le Fey" \
+	"guinie:Guinevere the Queen" "sancho:Sancho Panza" \
+	"sid:Sid Bedivere" "lancelot:Sir Lancelot" \
+	"gawain:Sir Gawain" "galahad:Sir Galahad" \
+	"kay:Sir Kay" "percivale:Sir Percivale"
+  do
+    u=$(echo "$ug" | cut -d: -f1)
+    g=$(echo "$ug" | cut -d: -f2)
+    p=$(users_pwgen)
+
+    output="$output
+	$u:$g:$p"
+    usermgr add \
+	--uid='#' \
+	--gid='#' \
+	--gecos="$g" \
+	--home="/home/$u" \
+	--passwd="$p" \
+	"$u"
+  done
+
+  groupmgr adduser royals arthur guinie
+  groupmgr adduser knights lancelot gawain galahad kay percivale
+  groupmgr adduser commoners sid sancho
+  groupmgr adduser nobles @knights @royals morgana
+  groupmgr adduser admins @royals
+
+  if [ -n "$output" ] ; then
+    echo "Creating...$output"
+  fi
+}
+
+
+setup_demo

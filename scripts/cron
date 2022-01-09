@@ -1,0 +1,8 @@
+#!/bin/sh
+if [ ! -d /etc/tlr-local ] ; then
+  mkdir -p /etc/tlr-local
+  /etc/tlr/scripts/apply_policies
+fi
+sleep $(expr $RANDOM % 300)
+/etc/tlr/scripts/hostmgr sync >/dev/null 2>&1
+

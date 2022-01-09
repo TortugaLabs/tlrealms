@@ -1,0 +1,125 @@
+#!/bin/sh
+#include prologue.sh
+#
+# Group manager 
+#
+require api-groups.sh
+require api-users.sh
+
+[ $# -eq 0 ] && die 10 "$0: op [args]"
+
+op="$1" ; shift
+
+ckmembers() {
+  local newgroup="$1" ; shift
+  local allfound=:
+  for usr in "$@"
+  do
+    if [ x"${usr:0:1}" = x"@" ] ; then
+      groups_exists "${usr:1}" && continue || :
+    else
+      users_exists "$usr" && continue || :
+    fi
+    allfound=false
+    echo "$usr: does not exist"
+  done
+  $allfound || die 63 "Not creating"
+  return 0
+}
+
+case "$op" in
+list)
+  recursive=false
+  while [ $# -gt 0 ]
+  do
+    case "$1" in
+    -R|--recursive)
+      recursive=:
+      ;;
+    *)
+      break
+      ;;
+    esac
+    shift
+  done
+
+  if [ $# -eq 0 ] ; then
+    if $recursive ; then
+      for g in $(groups_list)
+      do
+	echo "$g:$(groups_gid $g):$(groups_members -n $g)"
+      done
+    else
+      groups_list
+    fi
+  else
+    if $recursive ; then
+      opt=
+    else
+      opt=-n
+    fi
+    if [ $# -eq 1 ] ; then
+      groups_members $opt "$1"
+    else
+      for i in "$@"
+      do
+	echo "$i: $(groups_members $opt "$i" || echo "*unknown*")"
+      done
+    fi
+  fi
+  ;;
+add)
+  is_master || die 10 "This should only be run from master server"
+  [ $# -eq 0 ] && die 10 "Usage: $0 add [--gid=#] [--force] _grname_ [members]"
+  newgid="" ; force=""
+  while [ $# -gt 0 ]
+  do
+    case "$1" in
+    --gid=*) newgid="$1" ;;
+    *) break ;;
+    esac
+    shift
+  done
+  ckmembers "$@"
+  if groups_add $newgid "$@" ; then
+    apply_policies
+  else
+    die $? "Error creating $1"
+  fi
+  ;;
+del)
+  is_master || die 10 "This should only be run from master server"
+  [ $# -eq 0 ] && die 30 "Usage: $0 $op <group> [groups ...]"
+  groups_del "$@" && apply_policies
+  ;;
+adduser)
+  is_master || die 10 "This should only be run from master server"
+  [ $# -lt 2 ] && die 30 "Usage: $0 $op <group> [users ...]"
+  ckmembers "$@"
+  groups_adduser "$@" && apply_policies
+  ;;
+deluser)
+  is_master || die 10 "This should only be run from master server"
+  [ $# -lt 2 ] && die 30 "Usage: $0 $op <group> [users ...]"
+  groups_deluser "$@" && apply_policies
+  ;;
+help)
+  cat <<-EOF
+	Sub-commands:
+	- $0 list [-R] [group]
+	  Show list of groups, or group members (if group is specified)
+	  If -R is specified, group references are resolved.
+	- $0 add [--gid=#] [--force] _grname_ [members]"
+	  Create a new group.
+	- $0 del _group_
+	  Delete the given group
+	- $0 adduser _group_ _users_
+	  Add users to a group
+	- $0 deluser _group_ _users_
+	  Remove users from a group
+	EOF
+  ;;
+*)
+  die 20 "Invalid op: $op"
+  ;;
+esac

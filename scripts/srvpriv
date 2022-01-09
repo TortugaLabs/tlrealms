@@ -1,0 +1,107 @@
+#!/bin/sh
+#include prologue.sh
+#
+# A priviledge escalated server...
+#
+require api-serial.sh
+require api-hosts.sh
+require api-enrollments.sh
+
+cd /
+
+# Make sure that there is a valid Queue-Dir
+mkdir -p "$(enrolls_queue_dir)" && chmod 777 "$(enrolls_queue_dir)"
+
+srvpipe=$TLR_LOCAL/run/priv
+
+cleanup_process() {
+  notice "Caught $1: Clean up"
+  echo quit > "$srvpipe"
+  rm -f "$srvpipe"
+  exit
+}
+for j in EXIT INT TERM
+do
+  trap "cleanup_process $j" EXIT
+done
+
+
+if [ ! -p "$srvpipe" ] ; then
+  rm -f "$srvpipe"
+  mkdir -p "$(dirname "$srvpipe")"
+  mkfifo "$srvpipe"
+  chmod 422 "$srvpipe"
+fi
+
+notice() {
+  echo "$@" 1>&2
+}
+
+op_enroll() {
+  local vv="$1"
+  
+  if (echo "$vv" | grep -q "^purge ") then
+    vv=$(echo "$vv" | sed -e 's/purge //');
+    notice "enroll:purging $vv"
+    enrolls_del "$vv"
+  elif enrolls_exists "$vv" ; then
+    notice "enroll:enrolling $vv..."
+    (
+      exec 2>&1
+      enrolls_this "$vv"
+    ) | (
+      exec >>"$TLR_LOGS/enroll-$vv" 2>&1
+      while read ln
+      do
+	echo "$(date +%Y-%m-%d+%H:%M:%S): $ln"
+      done
+    )
+  else
+    notice "enroll:Invalid request \"$vv\""
+  fi
+}
+
+op_sync() {
+  local \
+	client="$(echo "$1" | cut -d, -f1)" \
+	serial="$(echo "$1" | cut -d, -f2)" \
+	remip="$(echo "$1" | cut -d, -f3)"
+  (
+    exec 2>&1
+    [ -z "$client" ] && die 0 "Invalid sync request ($1)"
+    [ -z "$serial" ] && die 0 "Incomplete sync request ($1)"
+    c_serial=$(serial_get)
+    [ x"$serial" = x"$c_serial" ] && die 0 "$client is up to date"
+    echo "SYNC REQUEST: client=$client serial=$serial$([ -n "$remip" ] && echo " ($remip)")"
+    SSH_IP_OVERRIDE="$remip" SSH_IDENTITY="/etc/ssh/ssh_host_rsa_key" $TLR_SCRIPTS/syncr -v "$client"
+  ) | (
+    while read ln
+    do
+      notice "sync:$ln"
+    done
+  )
+}
+
+notice "srvpriv:Starting ($$)..."
+
+while : ; do
+  (while read op args ; do
+    case "$op" in
+    quit)
+      exit 1
+      ;;
+    enroll)
+      # Enroll stuff
+      notice "ENROLL: \"$args\""
+      op_enroll "$args"
+      ;;
+    sync)
+      op_sync "$args"
+      ;;
+    *)
+      notice "op=$op args=$args"
+    esac
+  done; exit 0) < $srvpipe || break
+done
+
+notice "srvpriv:exiting ($$)"

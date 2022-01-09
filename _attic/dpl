@@ -1,0 +1,140 @@
+#!/bin/sh
+#
+# Deploy script...
+#
+# This script is used to deploy scripts 
+#
+set -euf -o pipefail
+
+fixfile="lib/fixfile.sh"
+binder="include/binder.php"
+
+if [ $# -eq 0 ] ; then
+  echo "Usage: $0 target"
+  exit 1
+fi
+
+cd "$(dirname "$0")" || exit 19
+target="$1" ; shift
+
+#####################################################################
+# Support functions
+. lib/shescape.sh
+
+rexec() {
+  local i
+  for i in "$@"
+  do
+    declare -f "$i"
+    echo "$i"
+  done
+}
+# Copying stuff
+recv_file() {
+  base64 -d  | gunzip | fixfile "$@"
+}
+send_file() {
+  local check=false""
+  if [ x"$1" = x"--check" ] ; then
+    check="$2"
+    shift 2
+  fi
+  local src="$1" eof_line="__EOF_${RANDOM}_${RANDOM}_EOF__" i; shift
+  echo ''
+  if [ -n "$check" ] ; then
+    echo "if [ ! -f $(shell_escape "$check") ] ; then"
+  fi
+  echo -n "recv_file"
+  for i in "$@"
+  do
+    echo -n " $(shell_escape "$i")"
+  done
+  echo "<< '$eof_line'"
+  $binder -t "$src" | gzip | base64
+  echo ''
+  echo "$eof_line"
+  if [ -n "$check" ] ; then
+    echo "fi"
+  fi
+}
+#####################################################################
+payload1() {
+  initdb=false
+  
+  local d
+  for d in /etc/tlr /etc/tlr-local
+  do
+    if [ ! -d "$d" ] ; then
+      initdb=true
+      mkdir -p "$d"
+    fi
+  done
+  ( cd /etc/tlr && mkdir -p scripts policies lib data data/users.d data/hosts.d data/groups.d)
+  mkdir -p /var/log/tlr
+}
+payload_server() {
+  /etc/tlr/scripts/setup www default /var/www/localhost/htdocs
+  local hosts_d=/etc/tlr/data/hosts.d
+  mkdir -p $hosts_d
+
+  find /etc/ssh -name 'ssh_host_*_key.pub' -type f -print0 \
+    | xargs -0 cat > $hosts_d/$(hostname).pub
+  serial_txt=/etc/tlr/data/serial.txt
+  if [ ! -f $serial_txt ] ; then
+    echo 0.0 > $serial_txt
+  fi
+  /etc/tlr/scripts/apply_policies
+}
+payload_initdb() {
+  sed -i~ -e "s/\"<SERVER>\"/\"$(hostname)\"/" "/etc/tlr/settings.sh"
+  if [ -z "$(/etc/tlr/scripts/groupmgr list admins)" ] ; then
+    /etc/tlr/scripts/groupmgr add admins
+  fi
+  if [ ! -f /etc/tlr/data/root_keys ] ; then
+    if [ -f $HOME/.ssh/authorized_keys ] ; then
+      cp $HOME/.ssh/authorized_keys /etc/tlr/data/root_keys
+    elif [ -f /etc/ssh/userkeys/root/authorized_keys ] ; then
+      cp /etc/ssh/userkeys/root/authorized_keys /etc/tlr/data/root_keys
+    else
+      > /etc/tlr/data/root_keys
+    fi
+  fi
+}
+payload_ckdeps() {
+  local cmd
+  for cmd in python rsync haserl httpd
+  do
+    type $cmd >/dev/null 2>&1 || echo "Missing: $cmd"
+  done
+}
+
+#####################################################################
+
+(
+  cat "$fixfile"
+  declare -f recv_file
+  rexec payload1
+
+  for assets in scripts policies lib
+  do
+    find $assets -type f | while read asset
+    do
+      send_file "$asset" -D --mode=755 /etc/tlr/$asset
+    done
+  done
+
+  echo 'if $initdb ; then'
+  find sample -type f | while read src
+  do
+    dst="/etc/tlr/$(echo "$src" | sed -e 's!^sample/!!')"
+    mode=$(awk '$1 == "#mode" { print $2 }' $src)
+    [ -z "$mode" ] && mode=644
+    send_file --check "$dst" "$src" -D --mode=$mode "$dst"
+  done
+  rexec payload_initdb 
+  echo 'fi'
+  
+  rexec payload_server
+
+  rexec payload_ckdeps
+) | ssh -T "$target"

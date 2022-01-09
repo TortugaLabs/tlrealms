@@ -1,0 +1,89 @@
+#!/bin/sh
+#include prologue.sh
+#
+# Host manager 
+#
+set -euf -o pipefail
+
+require api-hosts.sh
+
+[ $# -eq 0 ] && die 10 "$0: op [args]"
+
+op="$1" ; shift
+
+case "$op" in
+list)
+  # List hosts
+  hosts_list
+  ;;
+add)
+  is_master || die 10 "This should only be run from master server"
+    
+  enroll=false
+  while [ $# -gt 0 ]
+  do
+    case "$1" in
+    --enroll)
+      enroll=:
+      ;;
+    *)
+      break
+      ;;
+    esac
+    shift
+  done
+  [ $# -ne 1 ] && die 30 "Usage: $0 add [--enroll] <host>"
+  keys="$(cat)"
+  [ -z "$keys" ] && die 40 "Must provide public keys on stdin"
+  echo "$keys" | hosts_add "$1"
+  apply_policies
+  if $enroll ; then
+    SSH_IP_OVERRIDE= SSH_IDENTITY="/etc/ssh/ssh_host_rsa_key" $TLR_SCRIPTS/syncr -v "$1"
+  fi
+  ;;
+sync)
+  if ! is_master ; then
+    wget -O- "http://$(get_master|awk '{print $1}')/tlr/sync.cgi/$(hostname)?s=$(serial_get)"
+    exit $?
+  fi
+  [ $# -eq 0 ] && die 30 "Usage: $0 sync [--all] <host> ..."
+  if [ x"$1" = x"--all" ] ; then
+    set - $(hosts_list)
+  fi
+  for n in "$@"
+  do
+    [ $n = "$(hostname)" ] && continue
+    SSH_IP_OVERRIDE= SSH_IDENTITY="/etc/ssh/ssh_host_rsa_key" $TLR_SCRIPTS/syncr -v "$1"
+  done
+  ;;
+del)
+  is_master || die 10 "This should only be run from master server"
+  [ $# -eq 0 ] && die 30 "Usage: $0 rm <host> ..."
+  hosts_rm "$@"
+  apply_policies
+  ;;
+ci)
+  is_master || die 10 "This should only be run from master server"
+  serial_update
+  ;;
+help)
+  cat <<-EOF
+	Sub-commands:
+	- $0 list
+	  Show known hosts
+	- $0 add [--enroll] _hostname_ < public-keys
+	  Add a host.  If --enroll is specified, it will be enrolled.
+	- $0 del _host_ [...]
+	  Delete the given host
+	- $0 sync [--all|host]
+	  Synchronize data of host or all if --all was given.
+	- $0 ci
+	  Update `serial` number to force a resync.
+	EOF
+  ;;
+*)
+  die 20 "Invalid op: $op"
+  ;;
+esac
+
+  

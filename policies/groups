@@ -1,0 +1,87 @@
+#!/bin/sh
+#include prologue.sh
+#
+# Apply group related policies
+#
+
+require depcheck.sh
+require pol-users.sh
+require pol-groups.sh
+
+group_txt=$TLR_LOCAL/group.txt
+if depcheck $group_txt $0 $(groupspol_inputs) $(userspol_pwdfiles) ; then
+  (
+    gen_groups
+    gen_usersgroup ${GNAME_USERS:-users} ${GID_USERS:-11000} $(userspol_pwdfiles)
+  ) | sort -t : -k 3 -n > $group_txt
+fi
+
+if [ -z "${webuser:-}" ]; then
+  webuser=bin		# Suitable (secure) default...
+  if [ -f /etc/apk/world ] ; then
+    if grep -q apache /etc/apk/world ; then
+      webuser=apache
+    fi
+  fi
+fi
+  
+if id $webuser >/dev/null 2>&1 ; then
+  htgroup=$TLR_LOCAL/htgroup.txt
+  if depcheck $htgroup $group_txt $0 ; then
+    cut -d : -f 1,4 $group_txt | tr ', ' ' :' > $htgroup
+  fi
+  # Make sure that ownerships are enforced...
+  chown $webuser $htgroup
+fi
+
+
+#
+# Merge TL|Realm users with /etc/group files
+#
+if [ ${GID_MIN:=11000} -lt ${UID_MIN:=2000} ] ; then
+  min_id=$GID_MIN
+else
+  min_id=$UID_MIN
+fi
+max_id=${XID_MAX:-65500}
+
+etc_group=/etc/group ; group_tmp=$TLR_LOCAL/group.tmp
+if depcheck $group_tmp $etc_group $0 $group_txt ; then
+  (
+    awk -vFS=":" '$3 < '$min_id' || $3 > '$max_id $etc_group 
+    cat $group_txt
+  ) | sort -t : -k 3 -n > $group_tmp
+fi
+etc_gshadow=/etc/gshadow ; gshadow_tmp=$TLR_LOCAL/gshadow.tmp
+if [ -f $etc_gshadow ] ; then
+  if depcheck $gshadow_tmp $etc_gshadow $0 $group_tmp ; then
+    awk -f $TLR_LIB/grfix.awk -vgshadow=$etc_gshadow -vmin=$min_id -vmax=$max_id $group_tmp > $gshadow_tmp
+  fi # depchk
+fi # -f $etc_gshadow
+
+if has_role users users_login ; then
+  if [ $(wc -l < $group_tmp) -gt 5 ] ; then
+    if ! cmp $group_tmp $etc_group ; then
+      cp -a $etc_group ${etc_group}-
+      cat $group_tmp > $etc_group
+    else
+      : touch $etc_group
+    fi
+  fi
+  if [ -f $etc_gshadow ] ; then
+    if [ $(wc -l < $gshadow_tmp) -gt 5 ] ; then
+      if ! cmp $gshadow_tmp $etc_gshadow ; then
+	cp -a $etc_gshadow ${etc_gshadow}-
+	cat $gshadow_tmp > $etc_gshadow
+      fi
+    fi
+  fi
+# elif has_role userdb userdb_login ; then
+  #
+  # Create /var/db files (for nsswitch.conf)
+  #
+fi
+
+
+
+
