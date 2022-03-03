@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=chfn
+Comment=Change the finger data for the current user
+
+Icon=chfn
+Type=Application
+Categories=GTK;Settings;X-MATE-PersonalSettings;
+
+Exec=<TLR> chfn
+StartupNotify=false
+Terminal=false

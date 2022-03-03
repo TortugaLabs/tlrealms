@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=password
+Comment=Change the password for the current user
+
+Icon=chpw
+Type=Application
+Categories=GTK;Settings;X-MATE-PersonalSettings;
+
+Exec=<TLR> chpw
+StartupNotify=false
+Terminal=false

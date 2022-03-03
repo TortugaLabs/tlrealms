@@ -18,6 +18,7 @@ setup_sudo="" ; sudocmd="$TLR_BIN/$TLR_EXE chpw, $TLR_BIN/$TLR_EXE chfn *, $TLR_
 setup_startup=""
 setup_sshd=false
 sshdcfg=$TLR_ETC/ssh/sshd_config
+icons=
 
 while [ $# -gt 0 ]
 do
@@ -51,6 +52,8 @@ do
       ;;
     --sshd) setup_sshd=true ;;
     --sshd=*) setup_sshd=true ; sshdcfg=${1#--sshd=} ;;
+    --icons) icons=add ;;
+    --no-icons) icons=rm ;;
     help|--help)
       cat <<-_EOF_
 	Usage: $TLR_CMD {op} [args]
@@ -168,8 +171,8 @@ if [ -n "$setup_sudo" ] ; then
   fi
 fi
 
-if [ -n $setup_cron ] ; then
-  (fixfile --mode=755 $setup_cron/tlr.cron || :) <<-_EOF_
+if [ -n "$setup_cron" ] ; then
+  (fixfile --mode=755 $setup_cron/tlr_cron || :) <<-_EOF_
 	$BINDIR/tlr cron
 	_EOF_
 fi
@@ -199,3 +202,22 @@ if [ -f $sshdcfg ] ; then
   fi
 fi
 
+if [ -n "$icons" ]  ; then
+  case "$icons" in
+  add)
+    # Install icons
+    srcdir=$TLR_LIB/desktop
+    for i in chfn chpw
+    do
+      cp -av $srcdir/$i.png /usr/share/pixmaps/$i.png
+      sed -e "s|<TLR>|$TLR_BIN/$TLR_EXE|" < $srcdir/$i.desktop  > /usr/share/applications/$i.desktop
+    done
+    ;;
+  rm)
+    for i in chfn chpw
+    do
+      rm -vf /usr/share/pixmaps/$i.png /usr/share/applications/$i.desktop
+    done
+    ;;
+  esac
+fi
