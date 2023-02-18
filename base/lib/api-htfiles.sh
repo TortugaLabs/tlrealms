@@ -37,14 +37,14 @@ htfile_gen_pwds() {
     do
       i="$(users_passwd "$u" "$1")"
       [ -z "$i" ] && continue
-      
+
       echo "$u:$i"
     done
   ) | (
     [ $# -eq 1 ] && exec cat
     [ x"$2" = x"-" ] && exec cat
     output="$2" ; shift 2
-    fixfile "$@" "$output"
+    fixfile "$@" "$output" || :
   )
 }
 
@@ -65,7 +65,7 @@ htfile_gen_grps() {
     [ $# -eq 0 ] && exec cat
     [ x"$1" = x"-" ] && exec cat
     output="$1" ; shift
-    fixfile "$@" "$output"
+    fixfile "$@" "$output" || :
   )
 }
 
@@ -97,11 +97,11 @@ nginx_gen_grps() {
         done
       else
         output="$2/$g.$1" ; shift 2
-        fixfile "$@" "$output"
+        fixfile "$@" "$output" || :
       fi
     )
   done
-}  
+}
 
 #####################################################################
 
@@ -132,7 +132,7 @@ htfile_gen_map() {
     [ $# -eq 1 ] && exec cat
     [ x"$2" = x"-" ] && exec cat
     output="$2" ; shift 2
-    fixfile "$@" "$output"
+    fixfile "$@" "$output" || :
   )
 
 }

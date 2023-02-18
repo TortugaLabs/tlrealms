@@ -175,6 +175,19 @@ op_passwd() {
   polrun_apply users || :
 }
 
+op_testpasswd() {
+  [ $# -eq 0 ] && quit 12 "Usage: $TLR_CMD testpasswd {user} [passwd]"
+  user="$1" ; shift
+  passwd="$*"
+  [ -z "$passwd" ] && read -p "Password: " passwd
+  if users_pwck "$user" "$passwd" ; then
+    echo "OK"
+    exit 0
+  fi
+  echo "Error"
+  exit 1
+}
+
 op_del() {
   [ $# -eq 0 ] && quit 10 "Usage: $TLR_CMD del {user}"
   for n in "$@"
@@ -219,6 +232,9 @@ passwd)
 pwck)
   op_pwck "$@"
   ;;
+testpasswd|tp)
+  op_testpasswd "$@"
+  ;;
 help)
   cat <<-_EOF_
 	Usage: $TLR_CMD {op} [args]
@@ -231,6 +247,7 @@ help)
 	- del : delete user
 	- passwd : change user password
 	- pwck : check if a password follows policy
+	- testpasswd: check for password correctness
 	_EOF_
   exit 1
   ;;

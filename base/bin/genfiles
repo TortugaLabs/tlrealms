@@ -24,21 +24,21 @@ htpasswd)
   if [ $# -eq 0 ] ; then
     htfile_gen_pwds htpasswd
   else
-    htfile_gen_pwds htpasswd | fixfile "$@"
+    htfile_gen_pwds htpasswd | fixfile "$@" || :
   fi
   ;;
 htdigest)
   if [ $# -eq 0 ] ; then
     htfile_gen_pwds htdigest
   else
-    htfile_gen_pwds htdigest | fixfile "$@"
+    htfile_gen_pwds htdigest | fixfile "$@" || :
   fi
   ;;
 htgroup)
   if [ $# -eq 0 ] ; then
     htfile_gen_grps
   else
-    htfile_gen_grps | fixfile "$@"
+    htfile_gen_grps | fixfile "$@" || :
   fi
   ;;
 nginx-grps)
@@ -53,21 +53,21 @@ ident-sso)
   if [ $# -eq 0 ] ; then
     htfile_gen_map ident_sso
   else
-    htfile_gen_map ident_sso | fixfile "$@"
+    htfile_gen_map ident_sso | fixfile "$@" || :
   fi
   ;;
 social-map)
   if [ $# -eq 0 ] ; then
     htfile_gen_map social_logins
   else
-    htfile_gen_map social_logins | fixfile "$@"
+    htfile_gen_map social_logins | fixfile "$@" || :
   fi
   ;;
 host-keys)
   if [ $# -eq 0 ] ; then
     sync_gen_host_keys
   else
-    sync_gen_host_keys | fixfile "$@"
+    sync_gen_host_keys | fixfile "$@" || :
   fi
   ;;
 help)

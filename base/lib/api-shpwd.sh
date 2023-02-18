@@ -240,10 +240,10 @@ shpwd_gen_groupfiles() {
       echo "$sys_group"
       shpwd_gen_usrgrps | sort
       shpwd_gen_grps | sort
-    ) | fixfile --mode=644 "$etc_group"
+    ) | fixfile --mode=644 "$etc_group" || :
   fi
   if [ -n "$etc_gshadow" ] ; then
-    shpwd_gen_gshadow < "$etc_group" | fixfile --mode=400 "$etc_gshadow"
+    shpwd_gen_gshadow < "$etc_group" | fixfile --mode=400 "$etc_gshadow" || :
   fi
 }
 

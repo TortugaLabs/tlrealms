@@ -14,6 +14,16 @@
 # - ASHLIB_PATH
 #
 set -euf -o pipefail
+trace=false
+while [ $# -gt 0 ] ; do
+  case "$1" in
+    --trace) trace=true ;;
+    --no-trace) trace=false ;;
+    *) break ;;
+  esac
+  shift
+done
+
 export TLR_CMD="$(basename "$0")" TLR_EXE="$(basename "$(readlink -f "$0")")"
 if [ x"$TLR_CMD" = x"$TLR_EXE" ] ; then
   if [ $# -eq 0 ] ; then
@@ -39,6 +49,7 @@ fi
 [ -z "${ASHLIB_PATH:-}" ] && export ASHLIB_PATH="$TLR_LIB:$ASHLIB"
 [ -z "${TLR_BIN:-}" ] && export TLR_BIN="$TLR_BASE/bin"
 
+
 if [ x"$(basename "$(readlink -f "$TLR_BIN/$TLR_CMD")")" = x"$TLR_EXE" ] ; then
   if [ $# -eq 0 ] ; then
     echo "Missing sub-command" 1>&2
@@ -51,4 +62,5 @@ if [ ! -x "$TLR_BIN/$TLR_CMD" ] ; then
   exit 3
 fi
 
+$trace && exec sh -x "$TLR_BIN/$TLR_CMD" "$@"
 exec "$TLR_BIN/$TLR_CMD" "$@"

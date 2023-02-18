@@ -1,0 +1,29 @@
+#!/bin/sh
+. $TLR_LIB/init.sh
+include -1 api-polrun.sh
+
+trace=false
+while [ $# -gt 0 ]
+do
+  case "$1" in
+    --no-trace) trace=false ;;
+    --trace) trace=true ;;
+    *) break ;;
+  esac
+  shift
+done
+
+if [ $# -eq 0 ] ; then
+  echo "No policy specified.  Using \"cron\"" 1>&2
+  set - cron
+fi
+
+rc=""
+(
+  exec </dev/null
+  $trace && set -x
+  polrun_apply "$1"
+) || rc="$?"
+
+[ -n "$rc" ] && echo "exit: $rc" || :
+exit $rc

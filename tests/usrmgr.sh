@@ -36,6 +36,12 @@ xt_usrmgr_ops() {
   local npwd="$(cat $users_db/labrat.pwd )"
   [ x"$opwd" != x"$npwd" ] || atf_fail "Failed to change passwords"
 
+  local zpwd="$(users_pwgen 8)"
+  $usrmgr passwd labrat "$zpwd" || atf_fail "usermgr passwd labrat (2)"
+  $usrmgr testpasswd labrat "$zpwd" || atf_fail "usermgr testpasswd (1)"
+  (echo "$zpwd" | $usrmgr testpasswd labrat ) || atf_fail "usermgr testpasswd (1)"
+  $usrmgr testpasswd labrat "$RANDOM$RANDOM$zpwd" && atf_fail "usermgr testpasswd (2)"
+
   $usrmgr del arthur labrat
 
   users_exists labrat && atf_fail "user_exists(labrat): TRUE" || :
