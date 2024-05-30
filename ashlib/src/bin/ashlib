@@ -1,0 +1,64 @@
+#!/bin/sh
+#
+#    This program is free software: you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License as published by
+#    the Free Software Foundation, either version 2 of the License, or
+#    (at your option) any later version.
+#
+#    This program is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
+#
+#    You should have received a copy of the GNU General Public License
+#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
+#++
+# = ASHLIB(1)
+# :Revision:	1.0
+# :Author:	A Liu Ly
+# :man manual:  ashlib programmer's manual
+#
+# == NAME
+#
+# ashlib - set-up shell environment to use ashlib
+#
+# == SYNOPSIS
+#
+# eval $(ashlib)
+#
+# == DESCRIPTION
+#
+# Set the running shell process so that in can import *ashlib* modules
+# easily.
+#
+#--
+set -euf -o pipefail
+
+if [ -z "${ASHLIB:-}" ] ; then
+  # Figure the location of the ashlib library
+  script_dir=$(cd $(dirname $0) ; pwd)
+  ASHLIB=""
+  for target in . ../lib ../lib/ashlib ../ashlib
+  do
+    if [ -f $script_dir/$target/ashlib.sh ] ; then
+      ASHLIB="$(cd $script_dir/$target ; pwd)"
+      break
+    fi
+  done
+  if [ -z "$ASHLIB" ] ; then
+    echo "Unable to determine ASHLIB location" 1>&2
+    exit 1
+  fi
+  [ $# -eq 0 ] && echo "export ASHLIB=$ASHLIB;"
+fi
+if [ $# -eq 0 ] ; then
+  echo "source \$ASHLIB/ashlib.sh"
+else
+  IFS="$(printf "\001")"
+  for i in $(find "$ASHLIB" -mindepth 1 -maxdepth 1 -type f -name '*.sh' -print0 | tr '\0' '\1')
+  do
+    . "$i"
+  done
+  "$@"
+fi

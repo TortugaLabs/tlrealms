@@ -1,0 +1,206 @@
+#!/usr/bin/perl -w
+#    This program is free software: you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License as published by
+#    the Free Software Foundation, either version 2 of the License, or
+#    (at your option) any later version.
+#
+#    This program is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
+#
+#    You should have received a copy of the GNU General Public License
+#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
+#++
+# = SHDOC(1)
+# :Revision: 0.1
+# :Author: A Liu Ly
+# :man manual:  ashlib programmer's manual
+#
+# == NAME
+#
+# shdoc - basic shell script API documentation generator
+#
+# == SYNOPSIS
+#
+# shdoc _[-t title]_ file ...
+#
+# == DESCRIPTION
+#
+# This script examines shell source and outputs a markdown document
+# documenting defined functions.
+#
+# == DOCUMENTATION FORMAT
+#
+# *shdoc* will scan shell scripts and extracts comments that
+# start with +##+ followed by an optional space.  For example:
+#
+# ----
+# ## this is a **shdoc** comment.
+# ----
+#
+# By default, comments are added to a _global_ scope.  On the other hand,
+# comments following a function declaration (for example: +function this+)
+# are added to a _function_ scope.
+#
+# === Sample comments
+#
+# ----
+# # the next line has a "*" so that the line is ignored by shdoc
+# #*####################################################################
+# ## This section is used to document the module
+#
+# sample_function() {
+#   ## short description of sample_function
+#   ## # USAGE
+#   ##   sample_function arg1 arg2 arg3
+#   ## # ARGS
+#   ## * arg1 -- description of arg1
+#   ## * arg2 -- description of arg2
+#   ## * arg3 -- description of arg3
+#   ## # RETURNS
+#   ## exit code
+#   ## # OUTPUT
+#   ## what kind of output to eexpect
+# ----
+#
+# This is an example, any function section may be omitted.
+# The prose is markdown so any markdown markup may be used.
+#--
+use strict;
+use warnings;
+use Digest::MD5 qw(md5_hex);
+
+my $sect = undef;
+my $doctxt = {};
+my $docfile = {};
+my $ids = {};
+my $rid = {};
+my $files = {};
+my $title = 'API docs';
+
+while (scalar(@ARGV)) {
+    if ($ARGV[0] eq '-t') {
+	shift;
+	$title = shift;
+	$title || die "No title specified\n";
+    } else {
+	last;
+    }
+}
+
+die "No files specified\n" if (scalar(@ARGV) == 0);
+
+
+sub gen_id($) {
+  my ($sect) = @_;
+  my $idc = md5_hex($sect);
+  if (exists $rid->{$idc}) {
+    my $cnt = 0;
+    my $idb;
+    do {
+      $idb = $idc . (++$cnt);
+    } while (exists $rid->{$idb});
+    $idc = $idb;
+  }
+  return $idc;
+}
+
+
+foreach my $f (@ARGV) {
+
+    open(my $fh,'<',$f) || die "$f: $!\n";
+
+    $sect = $f;
+    $files->{$f} = [];
+    $doctxt->{$sect} = '';
+
+    $ids->{$sect} = gen_id('mod:' . $sect);
+
+    while (<$fh>) {
+	if ((/^\s*function\s+([_a-zA-Z][_0-9a-zA-Z]*)\s*\(\s*\)\s*\{/) ||
+	    (/^\s*([_a-zA-Z][_0-9a-zA-Z]*)\s*\(\s*\)\s*\{/) ) {
+	    $sect = $1;
+	    $doctxt->{$sect} = '';
+	    $docfile->{$sect} = $f;
+	    $ids->{$sect} = gen_id('fun:'.$f.','.$sect);
+	    push @{$files->{$f}},$sect;
+	} elsif (/^\s*##\s?/) {
+	    s/^\s*## ?//;
+	    $doctxt->{$sect} .= $_;
+	}
+    }
+    close($fh);
+}
+######################################################################
+sub anchor {
+    my ($item) = @_;
+    if ($ids->{$item}) {
+	return '<a name="'.sprintf('id%s',$ids->{$item}).'"></a>';
+    }
+    return '';
+}
+sub hlink {
+    my ($txt,$item) = @_;
+    $item = $txt unless (defined($item));
+    if ($ids->{$item}) {
+	return '['.$txt.'](#'.sprintf('id%s',$ids->{$item}).')';
+    }
+    return $txt;
+}
+sub postproc {
+    my ($txt,$hp) = @_;
+
+    my $out = '';
+    foreach my $ln (split(/\n/,$txt)) {
+	if ($ln =~ /^#/) {
+	    $out .= "\n$hp";
+	    $ln .= "\n";
+	}
+	$out .= $ln;
+	$out .= "\n";
+    }
+    $out .= "\n";
+    return $out;
+}
+
+######################################################################
+#
+# Generate MD output
+#
+print "# $title\n\n";
+
+print "## Modules\n\n";
+
+foreach my $f (sort keys %{$files}) {
+    print "* ",hlink($f),"\n";
+}
+print "\n";
+
+print "## Functions\n\n";
+
+foreach my $f (sort keys %{$doctxt}) {
+    next if (defined $files->{$f});
+    print "* ",hlink($f)," (",hlink($docfile->{$f}),")\n";
+}
+print "\n";
+
+print "* * *\n\n";
+
+foreach my $f (sort keys %{$files}) {
+    print "## ",anchor($f),"$f\n\n";
+    if ($doctxt->{$f}) {
+	print postproc($doctxt->{$f},'##'),"\n\n";
+    }
+    foreach my $s (sort @{$files->{$f}}) {
+	print "### ",anchor($s),$s,"\n\n";
+	if ($doctxt->{$s}) {
+	    print postproc($doctxt->{$s},'###'),"\n\n";
+	}
+    }
+}
+print "\n";
+
+
+

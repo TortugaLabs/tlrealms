@@ -36,8 +36,8 @@ fi
 [ -z "${TLR_BASE:-}" ] && export TLR_BASE="$(dirname $(dirname $(readlink -f "$0")))"
 [ -z "${TLR_LIB:-}" ] && export TLR_LIB="$TLR_BASE/lib"
 if [ -z "${ASHLIB:-}" ] ; then
-  if [ -d "$TLR_BASE/../.ashlib" ] ; then
-    ASHLIB="$(readlink -f "$TLR_BASE/../.ashlib/src/ashlib")"
+  if [ -d "$TLR_BASE/../ashlib" ] ; then
+    ASHLIB="$(readlink -f "$TLR_BASE/../ashlib/src/ashlib")"
   elif [ -d "$TLR_BASE/ashlib" ] ; then
     ASHLIB="$TLR_BASE/ashlib"
   else

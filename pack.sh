@@ -7,5 +7,5 @@ tarball="$1"
 
 tar --exclude-vcs -zcf "$tarball" \
 	-C $(pwd)/base $(cd base && ls -1) \
-	-C $(pwd)/.ashlib/src ashlib bin
+	-C $(pwd)/ashlib/src ashlib bin
 
